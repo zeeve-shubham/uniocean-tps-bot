@@ -104,11 +104,19 @@ func main() {
 		accNum, _ := strconv.ParseUint(accResp.Account.BaseAccount.AccountNumber, 10, 64)
 		accSeq, _ := strconv.ParseUint(accResp.Account.BaseAccount.Sequence, 10, 64)
 
+		// Derive the subaccount ID for nonce=0 (default subaccount)
+		subaccountID, err := BuildSubaccountID(address, 0)
+		if err != nil {
+			fmt.Printf("Warning: failed to compute subaccount ID for %s: %v\n", address, err)
+			continue
+		}
+
 		wallets = append(wallets, &Wallet{
-			PrivKey: privKey,
-			Address: address,
-			Seq:     accSeq,
-			Num:     accNum,
+			PrivKey:      privKey,
+			Address:      address,
+			SubaccountID: subaccountID,
+			Seq:          accSeq,
+			Num:          accNum,
 		})
 	}
 
