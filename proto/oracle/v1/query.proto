@@ -1,0 +1,139 @@
+syntax = "proto3";
+package oracle.v1;
+
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "oracle/v1/oracle.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/oracle/types";
+
+// Query defines the gRPC querier service for the oracle module
+service Query {
+  // Params queries the module parameters
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/oracle/v1/params";
+  }
+  
+  // Price queries the latest price for a symbol
+  rpc Price(QueryPriceRequest) returns (QueryPriceResponse) {
+    option (google.api.http).get = "/oracle/v1/price/{symbol}";
+  }
+  
+  // PriceHistory queries historical prices for a symbol
+  rpc PriceHistory(QueryPriceHistoryRequest) returns (QueryPriceHistoryResponse) {
+    option (google.api.http).get = "/oracle/v1/price_history/{symbol}";
+  }
+  
+  // Prices queries prices for multiple symbols
+  rpc Prices(QueryPricesRequest) returns (QueryPricesResponse) {
+    option (google.api.http).get = "/oracle/v1/prices";
+  }
+  
+  // MarkPrice calculates mark price for a trading pair
+  // Mark price = TWAP from oracle (for derivatives)
+  rpc MarkPrice(QueryMarkPriceRequest) returns (QueryMarkPriceResponse) {
+    option (google.api.http).get = "/oracle/v1/mark_price/{symbol}";
+  }
+
+  // PriceStats returns OHLC stats for a symbol over a time window
+  rpc PriceStats(QueryPriceStatsRequest) returns (QueryPriceStatsResponse) {
+    option (google.api.http).get = "/oracle/v1/price_stats/{symbol}";
+  }
+}
+
+// QueryParamsRequest is the request for querying module parameters
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response for module parameters
+message QueryParamsResponse {
+  Params params = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryPriceRequest is the request for querying a single price
+message QueryPriceRequest {
+  string symbol = 1;
+}
+
+// QueryPriceResponse is the response for a single price query
+message QueryPriceResponse {
+  PriceState price_state = 1;
+}
+
+// QueryPriceHistoryRequest is the request for historical prices
+message QueryPriceHistoryRequest {
+  string symbol = 1;
+}
+
+// QueryPriceHistoryResponse is the response for historical prices
+message QueryPriceHistoryResponse {
+  // Current price state
+  PriceState price_state = 1;
+  
+  // Historical price records (sorted by most recent first)
+  repeated PriceRecord records = 2 [(gogoproto.nullable) = false];
+}
+
+// QueryPricesRequest is the request for querying multiple prices
+message QueryPricesRequest {
+  repeated string symbols = 1;
+}
+
+// QueryPricesResponse is the response for multiple prices
+message QueryPricesResponse {
+  repeated PriceState price_states = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryMarkPriceRequest is the request for mark price calculation
+message QueryMarkPriceRequest {
+  string symbol = 1;
+}
+
+// QueryMarkPriceResponse is the response for mark price
+message QueryMarkPriceResponse {
+  // Index price from oracle
+  string index_price = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  
+  // Mark price (TWAP-based for derivatives)
+  string mark_price = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  
+  // Last update timestamp
+  int64 timestamp = 3;
+}
+
+// QueryPriceStatsRequest is the request for OHLC stats
+message QueryPriceStatsRequest {
+  string symbol = 1;
+
+  // Optional lookback window in seconds (0 = all available history)
+  int64 window_seconds = 2;
+}
+
+// QueryPriceStatsResponse contains OHLC stats
+message QueryPriceStatsResponse {
+  string open = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  string high = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  string low = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  string close = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+
+  int64 from_timestamp = 5;
+  int64 to_timestamp = 6;
+  uint32 sample_count = 7;
+}

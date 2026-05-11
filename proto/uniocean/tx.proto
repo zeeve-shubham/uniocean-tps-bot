@@ -1,0 +1,125 @@
+syntax = "proto3";
+package uniocean;
+
+// this line is used by starport scaffolding # proto/tx/import
+
+import "cosmos/msg/v1/msg.proto";
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "uniocean/uniocean.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/uniocean/types";
+
+// Msg defines the Uniocean Msg service
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+  // this line is used by starport scaffolding # proto/tx/rpc
+
+  // ConvertVouchers defines a method for converting ibc voucher to uniocean evm
+  // coins.
+  rpc ConvertVouchers(MsgConvertVouchers) returns (MsgConvertVouchersResponse);
+
+  // TransferTokens defines a method to transfer uniocean evm coins to another
+  // chain through IBC
+  rpc TransferTokens(MsgTransferTokens) returns (MsgTransferTokensResponse);
+
+  // UpdateTokenMapping defines a method to update token mapping
+  rpc UpdateTokenMapping(MsgUpdateTokenMapping) returns (MsgUpdateTokenMappingResponse);
+
+  // TurnBridge defines a method to disable or enable the gravity bridge
+  rpc TurnBridge(MsgTurnBridge) returns (MsgTurnBridgeResponse);
+
+  // UpdateParams defines a method to update uniocean module params
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+
+  // UpdatePermissions defines a method to update uniocean admins permissions
+  rpc UpdatePermissions(MsgUpdatePermissions) returns (MsgUpdatePermissionsResponse);
+
+  // StoreBlockList
+  rpc StoreBlockList(MsgStoreBlockList) returns (MsgStoreBlockListResponse);
+}
+
+// MsgConvertVouchers represents a message to convert ibc voucher coins to
+// uniocean evm coins.
+message MsgConvertVouchers {
+  option (cosmos.msg.v1.signer)           = "address";
+  string   address                        = 1;
+  repeated cosmos.base.v1beta1.Coin coins = 2
+      [(gogoproto.nullable) = false, (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"];
+}
+
+// MsgTransferTokens represents a message to transfer uniocean evm coins through
+// ibc.
+message MsgTransferTokens {
+  option (cosmos.msg.v1.signer)           = "from";
+  string   from                           = 1;
+  string   to                             = 2;
+  repeated cosmos.base.v1beta1.Coin coins = 3
+      [(gogoproto.nullable) = false, (gogoproto.castrepeated) = "github.com/cosmos/cosmos-sdk/types.Coins"];
+  string   channel_id                     = 4;
+}
+
+// MsgConvertVouchersResponse defines the ConvertVouchers response type.
+message MsgConvertVouchersResponse {}
+
+// MsgTransferTokensResponse defines the TransferTokens response type.
+message MsgTransferTokensResponse {}
+
+// MsgUpdateTokenMapping defines the request type
+message MsgUpdateTokenMapping {
+  option (cosmos.msg.v1.signer) = "sender";
+  string sender                 = 1;
+  string denom                  = 2;
+  string contract               = 3;
+  // only when updating uniocean (source) tokens
+  string symbol  = 4;
+  uint32 decimal = 5;
+}
+
+// MsgUpdateTokenMappingResponse defines the response type
+message MsgUpdateTokenMappingResponse {}
+
+// MsgTurnBridge defines the request type
+message MsgTurnBridge {
+  option (cosmos.msg.v1.signer) = "sender";
+  string sender                 = 1;
+  bool   enable                 = 2;
+}
+
+// MsgTurnBridgeResponse defines the response type
+message MsgTurnBridgeResponse {}
+
+// MsgUpdateParams defines the request type for updating uniocean params.
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  // authority is the address of the governance account.
+  string authority = 1;
+
+  // NOTE: All parameters must be supplied.
+  Params params = 2 [(gogoproto.nullable) = false];
+}
+
+// MsgUpdateParamsResponse defines the response type.
+message MsgUpdateParamsResponse {}
+
+// MsgUpdatePermissions defines the request type for updating uniocean
+// permissions.
+message MsgUpdatePermissions {
+  option (cosmos.msg.v1.signer) = "from";
+  string from                   = 1;
+  string address                = 2;
+  uint64 permissions            = 3;
+}
+
+// MsgUpdatePermissionsResponse defines the response type.
+message MsgUpdatePermissionsResponse {}
+
+// MsgStoreBlockList
+message MsgStoreBlockList {
+  option (cosmos.msg.v1.signer) = "from";
+  string from                   = 1;
+  bytes  blob                   = 2;
+}
+
+// MsgStoreBlockListResponse
+message MsgStoreBlockListResponse {}

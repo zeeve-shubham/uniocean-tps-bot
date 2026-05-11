@@ -1,0 +1,127 @@
+syntax = "proto3";
+package exchange.v1;
+
+import "amino/amino.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types";
+
+// CreateSpotLimitOrderAuthz defines authorization for creating spot limit orders
+// Restrictsto specific markets and subaccounts
+message CreateSpotLimitOrderAuthz {
+  option (amino.name) = "exchange/CreateSpotLimitOrderAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // subaccount_id restricts to specific subaccount (empty = any subaccount)
+  string subaccount_id = 1;
+
+  // market_ids restricts to specific markets (empty = all markets)
+  repeated string market_ids = 2;
+
+  // max_order_value is the maximum value per order (0 = unlimited)
+  cosmos.base.v1beta1.Coin max_order_value = 3 [(gogoproto.nullable) = false];
+}
+
+// CreateSpotMarketOrderAuthz defines authorization for creating spot market orders
+message CreateSpotMarketOrderAuthz {
+  option (amino.name) = "exchange/CreateSpotMarketOrderAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // subaccount_id restricts to specific subaccount (empty = any subaccount)
+  string subaccount_id = 1;
+
+  // market_ids restricts to specific markets (empty = all markets)
+  repeated string market_ids = 2;
+
+  // max_order_value is the maximum value per order (0 = unlimited)
+  cosmos.base.v1beta1.Coin max_order_value = 3 [(gogoproto.nullable) = false];
+}
+
+// CreateDerivativeLimitOrderAuthz defines authorization for creating derivative limit orders
+message CreateDerivativeLimitOrderAuthz {
+  option (amino.name) = "exchange/CreateDerivativeLimitOrderAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // subaccount_id restricts to specific subaccount (empty = any subaccount)
+  string subaccount_id = 1;
+
+  // market_ids restricts to specific markets (empty = all markets)
+  repeated string market_ids = 2;
+
+  // max_order_value is the maximum value per order (0 = unlimited)
+  cosmos.base.v1beta1.Coin max_order_value = 3 [(gogoproto.nullable) = false];
+}
+
+// CreateDerivativeMarketOrderAuthz defines authorization for creating derivative market orders
+message CreateDerivativeMarketOrderAuthz {
+  option (amino.name) = "exchange/CreateDerivativeMarketOrderAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // subaccount_id restricts to specific subaccount (empty = any subaccount)
+  string subaccount_id = 1;
+
+  // market_ids restricts to specific markets (empty = all markets)
+  repeated string market_ids = 2;
+
+  // max_order_value is the maximum value per order (0 = unlimited)
+  cosmos.base.v1beta1.Coin max_order_value = 3 [(gogoproto.nullable) = false];
+}
+
+// BatchUpdateOrdersAuthz defines authorization for batch order updates
+message BatchUpdateOrdersAuthz {
+  option (amino.name) = "exchange/BatchUpdateOrdersAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // subaccount_id restricts to specific subaccount (empty = any subaccount)
+  string subaccount_id = 1;
+
+  // spot_market_ids restricts spot operations to specific markets (empty = all markets)
+  repeated string spot_market_ids = 2;
+
+  // derivative_market_ids restricts derivative operations to specific markets (empty = all markets)
+  repeated string derivative_market_ids = 3;
+
+  // max_order_value is the maximum value per individual order (0 = unlimited)
+  cosmos.base.v1beta1.Coin max_order_value = 4 [(gogoproto.nullable) = false];
+}
+
+// CancelSpotOrderAuthz defines authorization for canceling spot orders
+message CancelSpotOrderAuthz {
+  option (amino.name) = "exchange/CancelSpotOrderAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // subaccount_id restricts to specific subaccount (empty = any subaccount)
+  string subaccount_id = 1;
+
+  // market_ids restricts to specific markets (empty = all markets)
+  repeated string market_ids = 2;
+}
+
+// CancelDerivativeOrderAuthz defines authorization for canceling derivative orders
+message CancelDerivativeOrderAuthz {
+  option (amino.name) = "exchange/CancelDerivativeOrderAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // subaccount_id restricts to specific subaccount (empty = any subaccount)
+  string subaccount_id = 1;
+
+  // market_ids restricts to specific markets (empty = all markets)
+  repeated string market_ids = 2;
+}
+
+// SubaccountTransferAuthz defines authorization for subaccount transfers
+message SubaccountTransferAuthz {
+  option (amino.name) = "exchange/SubaccountTransferAuthz";
+  option (cosmos_proto.implements_interface) = "cosmos.authz.v1beta1.Authorization";
+
+  // source_subaccount restricts source subaccount (empty = any)
+  string source_subaccount = 1;
+
+  // destination_subaccount restricts destination subaccount (empty = any)
+  string destination_subaccount = 2;
+
+  // max_amount is the maximum transfer amount (0 = unlimited)
+  cosmos.base.v1beta1.Coin max_amount = 3 [(gogoproto.nullable) = false];
+}

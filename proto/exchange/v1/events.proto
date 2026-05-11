@@ -1,0 +1,477 @@
+syntax = "proto3";
+package exchange.v1;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types";
+
+// Phase 1: Spot Market Events
+message EventSpotMarketCreated {
+  string market_id = 1;
+  string ticker = 2;
+  string base_denom = 3;
+  string quote_denom = 4;
+}
+
+message EventSpotLimitOrderCreated {
+  string market_id = 1;
+  string order_hash = 2;
+  string subaccount_id = 3;
+  string cid = 4; // Client Order ID
+  bool is_buy = 5;
+  string price = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message EventSpotOrderExecuted {
+  string market_id = 1;
+  string subaccount_id = 2;
+  string cid = 3; // Client Order ID
+  bool is_buy = 4;
+  string price = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string fee = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message EventSpotOrderCancelled {
+  string market_id = 1;
+  string order_hash = 2;
+  string subaccount_id = 3;
+  string cid = 4; // Client Order ID
+}
+
+message EventSubaccountDeposit {
+  string src_address = 1;
+  string subaccount_id = 2;
+  string denom = 3;
+  string amount = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message EventSubaccountWithdraw {
+  string dst_address = 1;
+  string subaccount_id = 2;
+  string denom = 3;
+  string amount = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Phase 2: Derivative Market Events
+message EventDerivativeMarketCreated {
+  string market_id = 1;
+  string ticker = 2;
+  string oracle_base = 3;
+  string oracle_quote = 4;
+  bool is_perpetual = 5;
+}
+
+message EventDerivativeLimitOrderCreated {
+  string market_id = 1;
+  string order_hash = 2;
+  string subaccount_id = 3;
+  string cid = 4; // Client Order ID
+  bool is_buy = 5;
+  string price = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_reduce_only = 9;
+}
+
+message EventDerivativePositionOpened {
+  string market_id = 1;
+  string subaccount_id = 2;
+  string cid = 3; // Client Order ID
+  bool is_long = 4;
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string entry_price = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message EventDerivativePositionClosed {
+  string market_id = 1;
+  string subaccount_id = 2;
+  string cid = 3; // Client Order ID
+  string pnl = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message EventLiquidationTriggered {
+  string market_id = 1;
+  string subaccount_id = 2;
+  string liquidator = 3;
+  string liquidation_price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string liquidation_quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string liquidator_reward = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message EventFundingUpdated {
+  string market_id = 1;
+  string cumulative_funding = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string funding_rate = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int64 timestamp = 4;
+}
+
+message EventMarketSettled {
+  string market_id = 1;
+  string settlement_price = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int64 settlement_timestamp = 3;
+  uint64 positions_settled = 4;
+}
+
+// ============================================================================
+// Injective Indexer Compatible Batch Events
+// ============================================================================
+
+// Batch Spot Execution Event
+message EventBatchSpotExecution {
+  string market_id = 1;
+  bool is_buy = 2;
+  string execution_type = 3; // "market", "limit", "limit_matched"
+  repeated SpotTrade trades = 4;
+}
+
+message SpotTrade {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  string price = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string fee = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string fee_recipient = 6;
+}
+
+// Batch Derivative Execution Event
+message EventBatchDerivativeExecution {
+  string market_id = 1;
+  bool is_buy = 2;
+  bool is_liquidation = 3;
+  string execution_type = 4; // "market", "limit", "limit_matched"
+  string cumulative_funding = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  repeated DerivativeTrade trades = 6;
+}
+
+message DerivativeTrade {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  string execution_price = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string execution_quantity = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string execution_margin = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string fee = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string fee_recipient = 7;
+  string payout = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string pnl = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string position_delta = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Batch Derivative Position Event
+message EventBatchDerivativePosition {
+  string market_id = 1;
+  repeated PositionState positions = 2;
+}
+
+message PositionState {
+  string subaccount_id = 1;
+  string direction = 2; // "long", "short"
+  string quantity = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string entry_price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string liquidation_price = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string mark_price = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string aggregate_reduce_only_quantity = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string cumulative_funding_entry = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Perpetual Market Funding Update Event
+message EventPerpetualMarketFundingUpdate {
+  string market_id = 1;
+  string funding_rate = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string mark_price = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_hourly_funding = 4;
+  int64 timestamp = 5;
+}
+
+// Spot Market Update Event
+message EventSpotMarketUpdate {
+  string market_id = 1;
+  string ticker = 2;
+  string base_denom = 3;
+  string quote_denom = 4;
+  string min_price_tick_size = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maker_fee_rate = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string market_status = 10; // "active", "paused", "demolished"
+}
+
+// Perpetual Market Update Event
+message EventPerpetualMarketUpdate {
+  string market_id = 1;
+  string ticker = 2;
+  string quote_denom = 3;
+  string oracle_base = 4;
+  string oracle_quote = 5;
+  string oracle_type = 6;
+  int32 oracle_scale_factor = 7;
+  string initial_margin_ratio = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maintenance_margin_ratio = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maker_fee_rate = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 11 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_price_tick_size = 12 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 13 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string market_status = 15; // "active", "paused", "demolished"
+}
+
+// Batch Deposit Update Event
+message EventBatchDepositUpdate {
+  repeated DepositUpdate deposit_updates = 1;
+}
+
+message DepositUpdate {
+  string subaccount_id = 1;
+  string denom = 2;
+  string amount = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string src_address = 4; // Source address - where funds came from (user wallet for deposits, module for withdrawals)
+  string dst_address = 5; // Destination address - where funds went (module for deposits, user wallet for withdrawals)
+  string transaction_type = 6; // Type of transaction: "deposit", "withdraw", "transfer"
+}
+// Order Cancelled Event
+message EventOrderCancelled {
+  string market_type = 1; // "spot" or "derivative"
+  string market_id = 2;
+  string order_hash = 3;
+  string subaccount_id = 4;
+  string reason = 5; // "user_requested", "batch_cancel", "insufficient_margin", etc.
+  int64 timestamp = 6;
+}
+
+// Order Expired Event
+message EventOrderExpired {
+  string market_type = 1; // "spot" or "derivative"
+  string market_id = 2;
+  string order_hash = 3;
+  string subaccount_id = 4;
+  int64 expired_at_block = 5;
+  int64 timestamp = 6;
+}
+
+// New Spot Orders Event - batch of newly placed spot limit orders
+message EventNewSpotOrders {
+  string market_id = 1;
+  repeated SpotOrderInfo buy_orders = 2;
+  repeated SpotOrderInfo sell_orders = 3;
+  int64 timestamp = 4;
+}
+
+message SpotOrderInfo {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  bool is_buy = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string cid = 6; // Client Order ID - optional user-defined identifier
+}
+
+// New Derivative Orders Event - batch of newly placed derivative limit orders
+message EventNewDerivativeOrders {
+  string market_id = 1;
+  repeated DerivativeOrderInfo buy_orders = 2;
+  repeated DerivativeOrderInfo sell_orders = 3;
+  int64 timestamp = 4;
+}
+
+message DerivativeOrderInfo {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  bool is_long = 3; // true for buy/long, false for sell/short
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string cid = 7; // Client Order ID - optional user-defined identifier
+}
+
+// Orderbook Update Event - real-time orderbook deltas when orders match
+message EventOrderbookUpdate {
+  string market_type = 1; // "spot" or "derivative"
+  string market_id = 2;
+  repeated OrderbookDelta updates = 3;
+  int64 timestamp = 4;
+}
+
+message OrderbookDelta {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  bool is_buy = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity_delta = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string action = 6; // "added", "filled", "cancelled", "expired"
+}

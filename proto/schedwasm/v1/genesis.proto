@@ -1,0 +1,14 @@
+syntax = "proto3";
+package schedwasm.v1;
+
+import "schedwasm/v1/types.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/schedwasm/types";
+
+// GenesisState defines the genesis state of the schedwasm module
+message GenesisState {
+  // Module parameters
+  Params params = 1;
+  // Registered contracts at genesis
+  repeated ContractRegistration registrations = 2;
+}

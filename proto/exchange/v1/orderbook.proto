@@ -1,0 +1,12 @@
+syntax = "proto3";
+package exchange.v1;
+
+import "gogoproto/gogo.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types";
+
+// PersistentOrderbookPriceLevel represents aggregated quantity at a price level for orderbook metadata
+message PersistentOrderbookPriceLevel {
+  string price = 1 [(gogoproto.customtype) = "cosmossdk.io/math.LegacyDec", (gogoproto.nullable) = false];
+  string quantity = 2 [(gogoproto.customtype) = "cosmossdk.io/math.LegacyDec", (gogoproto.nullable) = false];
+}

@@ -1,0 +1,25 @@
+syntax = "proto3";
+package insurance.v1;
+
+import "gogoproto/gogo.proto";
+import "insurance/v1/insurance.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/insurance/types";
+
+// GenesisState defines the insurance module's genesis state
+message GenesisState {
+  // params defines all the parameters of related to insurance
+  Params params = 1 [(gogoproto.nullable) = false];
+  
+  // insurance_funds defines all the insurance funds
+  repeated InsuranceFund insurance_funds = 2 [(gogoproto.nullable) = false];
+  
+  // redemption_schedule defines all pending redemption schedules
+  repeated RedemptionSchedule redemption_schedule = 3 [(gogoproto.nullable) = false];
+  
+  // next_share_denom_id is the next share denom ID to be used
+  uint64 next_share_denom_id = 4;
+  
+  // next_redemption_schedule_id is the next redemption schedule ID to be used
+  uint64 next_redemption_schedule_id = 5;
+}

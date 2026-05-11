@@ -1,0 +1,1082 @@
+syntax = "proto3";
+package exchange.v1;
+
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "exchange/v1/exchange.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types";
+
+// Phase 1: Deposit/Withdraw
+message MsgDeposit {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  cosmos.base.v1beta1.Coin amount = 3 [(gogoproto.nullable) = false];
+}
+
+message MsgDepositResponse {}
+
+message MsgWithdraw {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  cosmos.base.v1beta1.Coin amount = 3 [(gogoproto.nullable) = false];
+}
+
+message MsgWithdrawResponse {}
+
+// Phase 1: Spot Market Management
+message MsgCreateSpotMarket {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  // Authority is the address that controls the module (gov module account)
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string ticker = 2;
+  string base_denom = 3;
+  string quote_denom = 4;
+  string maker_fee_rate = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_price_tick_size = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool enforce_post_only = 9;  // If true, all orders must be post-only (no taker orders)
+}
+
+message MsgCreateSpotMarketResponse {
+  string market_id = 1;
+}
+
+// Phase 1: Spot Orders
+message MsgCreateSpotLimitOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 6;
+  bool is_post_only = 7;  // If true, order will be rejected if it would match immediately
+  exchange.v1.TimeInForce time_in_force = 8;  // Execution timing constraint (GTC, IOC, FOK)
+}
+
+message MsgCreateSpotLimitOrderResponse {
+  string order_hash = 1;
+}
+
+message MsgCreateSpotMarketOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 6;
+  string cid = 7;  // Client Order ID - optional user-defined identifier
+}
+
+message MsgCreateSpotMarketOrderResponse {
+  string order_hash = 1;
+}
+
+message MsgCancelSpotOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string order_hash = 4;
+}
+
+message MsgCancelSpotOrderResponse {}
+
+// MsgInstantSpotMarketLaunch creates a spot market instantly with a listing fee
+message MsgInstantSpotMarketLaunch {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string ticker = 2;
+  string base_denom = 3;
+  string quote_denom = 4;
+  string min_price_tick_size = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maker_fee_rate = 7 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 8[
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgInstantSpotMarketLaunchResponse {
+  string market_id = 1;
+}
+
+// MsgInstantPerpetualMarketLaunch creates a perpetual market instantly with a listing fee
+message MsgInstantPerpetualMarketLaunch {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string ticker = 2;
+  string quote_denom = 3;
+  string oracle_base = 4;
+  string oracle_quote = 5;
+  uint32 oracle_scale_factor = 6;
+  int32 oracle_type = 7;
+  string maker_fee_rate = 8 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 9 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string initial_margin_ratio = 10 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maintenance_margin_ratio = 11 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_price_tick_size = 12 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 13 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgInstantPerpetualMarketLaunchResponse {
+  string market_id = 1;
+}
+
+// MsgInstantExpiryFuturesMarketLaunch creates an expiry futures market instantly with a listing fee
+message MsgInstantExpiryFuturesMarketLaunch {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string ticker = 2;
+  string quote_denom = 3;
+  string oracle_base = 4;
+  string oracle_quote = 5;
+  uint32 oracle_scale_factor = 6;
+  int32 oracle_type = 7;
+  int64 expiry = 8;
+  string maker_fee_rate = 9 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 10 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string initial_margin_ratio = 11 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maintenance_margin_ratio = 12 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_price_tick_size = 13 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 14 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgInstantExpiryFuturesMarketLaunchResponse {
+  string market_id = 1;
+}
+
+// MsgEmergencySettleMarket allows governance to force-settle a derivative market in emergencies
+message MsgEmergencySettleMarket {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1;                  // Must be governance
+  string market_id = 2;
+  string settlement_price = 3 [          // Oracle-derived or governance-specified price
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgEmergencySettleMarketResponse {}
+
+// MsgUpdateExchangeEnableStatus allows governance to enable/disable spot or derivatives exchange
+message MsgUpdateExchangeEnableStatus {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  // Authority is the address that controls the module (gov module account)
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  
+  // Optional fields - only update if set
+  bool update_spot_enabled = 2;           // Whether to update spot exchange status
+  bool spot_exchange_enabled = 3;          // New spot exchange enabled status
+  bool update_derivatives_enabled = 4;     // Whether to update derivatives exchange status
+  bool derivatives_exchange_enabled = 5;   // New derivatives exchange enabled status
+}
+
+message MsgUpdateExchangeEnableStatusResponse {}
+
+// Phase 2: Derivative Market Management
+message MsgCreateDerivativeMarket {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  // Authority is the address that controls the module (gov module account)
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string ticker = 2;
+  string oracle_base = 3;
+  string oracle_quote = 4;
+  int32 oracle_type = 5;
+  uint32 oracle_scale_factor = 6;
+  string quote_denom = 7;
+  string initial_margin_ratio = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maintenance_margin_ratio = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maker_fee_rate = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 11 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string relayer_fee_share_rate = 12 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_price_tick_size = 13 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 14 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_perpetual = 15;
+  int64 expiry_timestamp = 16; // Unix timestamp when market expires (required if is_perpetual=false, 0 if perpetual)
+  bool enforce_post_only = 17;  // If true, all orders must be post-only (no taker orders)
+}
+
+message MsgCreateDerivativeMarketResponse {
+  string market_id = 1;
+}
+
+// Phase 2: Derivative Orders
+message MsgCreateDerivativeLimitOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 7;
+  bool is_reduce_only = 8;
+  bool is_post_only = 9;  // If true, order will be rejected if it would match immediately
+  exchange.v1.TimeInForce time_in_force = 10;  // Execution timing constraint (GTC, IOC, FOK)
+  int64 expiry_block = 11;  // Optional block height when order expires (0 = never)
+}
+
+message MsgCreateDerivativeLimitOrderResponse {
+  string order_hash = 1;
+}
+
+message MsgCreateDerivativeMarketOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 7;
+  bool is_reduce_only = 8;
+}
+
+message MsgCreateDerivativeMarketOrderResponse {
+  string order_hash = 1;
+}
+
+message MsgCancelDerivativeOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string order_hash = 4;
+}
+
+message MsgCancelDerivativeOrderResponse {}
+
+// Phase 2: Risk Management
+message MsgLiquidatePosition {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+}
+
+message MsgLiquidatePositionResponse {}
+
+message MsgIncreasePositionMargin {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string source_subaccount_id = 2;
+  string destination_subaccount_id = 3;
+  string market_id = 4;
+  string amount = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgIncreasePositionMarginResponse {}
+
+// MsgDecreasePositionMargin allows traders to remove excess margin from a position
+message MsgDecreasePositionMargin {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string source_subaccount_id = 2;
+  string destination_subaccount_id = 3;
+  string market_id = 4;
+  string amount = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgDecreasePositionMarginResponse {}
+
+// Phase 3: Subaccount Transfers
+message MsgSubaccountTransfer {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string source_subaccount_id = 2;
+  string destination_subaccount_id = 3;
+  cosmos.base.v1beta1.Coin amount = 4 [(gogoproto.nullable) = false];
+}
+
+message MsgSubaccountTransferResponse {}
+
+message MsgExternalTransfer {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string source_subaccount_id = 2;
+  string destination_subaccount_id = 3;
+  cosmos.base.v1beta1.Coin amount = 4 [(gogoproto.nullable) = false];
+}
+
+message MsgExternalTransferResponse {}
+
+// Batch operations
+message MsgBatchCancelSpotOrders {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  repeated string order_hashes = 4; // List of order hashes to cancel
+}
+
+message MsgBatchCancelSpotOrdersResponse {
+  repeated string cancelled_order_hashes = 1; // Successfully cancelled order hashes
+}
+
+message MsgBatchCancelDerivativeOrders {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  repeated string order_hashes = 4; // List of order hashes to cancel
+}
+
+message MsgBatchCancelDerivativeOrdersResponse {
+  repeated string cancelled_order_hashes = 1; // Successfully cancelled order hashes
+}
+
+// Batch Create + Cancel Orders (Atomic)
+message SpotOrderData {
+  string market_id = 1;
+  string subaccount_id = 2;
+  string order_type = 3; // "buy" or "sell"
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message DerivativeOrderData {
+  string market_id = 1;
+  string subaccount_id = 2;
+  bool is_buy = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_reduce_only = 7;
+}
+
+message OrderCancelData {
+  string market_id = 1;
+  string subaccount_id = 2;
+  string order_hash = 3;
+}
+
+message MsgBatchUpdateOrders {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  
+  // Spot operations
+  repeated SpotOrderData spot_orders_to_create = 3;
+  repeated OrderCancelData spot_orders_to_cancel = 4;
+  
+  // Derivative operations
+  repeated DerivativeOrderData derivative_orders_to_create = 5;
+  repeated OrderCancelData derivative_orders_to_cancel = 6;
+}
+
+message MsgBatchUpdateOrdersResponse {
+  repeated string spot_order_hashes = 1; // Created spot order hashes
+  repeated string derivative_order_hashes = 2; // Created derivative order hashes
+  repeated string spot_cancel_success = 3; // Successfully cancelled spot orders
+  repeated string derivative_cancel_success = 4; // Successfully cancelled derivative orders
+}
+
+// Governance - Market Updates
+message MsgUpdateSpotMarket {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string market_id = 2;
+  string new_ticker = 3; // Optional: leave empty to keep unchanged
+  string new_maker_fee_rate = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_taker_fee_rate = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_relayer_fee_share = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_min_price_tick_size = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_min_quantity_tick_size = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  int32 new_status = 9; // 0 = keep unchanged
+  bool update_enforce_post_only = 10; // If true, update enforce_post_only field
+  bool new_enforce_post_only = 11;     // New value for enforce_post_only
+}
+
+message MsgUpdateSpotMarketResponse {}
+
+message MsgUpdateDerivativeMarket {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string market_id = 2;
+  string new_ticker = 3; // Optional: leave empty to keep unchanged
+  string new_maker_fee_rate = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_taker_fee_rate = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_relayer_fee_share = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_initial_margin_ratio = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_maintenance_margin_ratio = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_min_price_tick_size = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  string new_min_quantity_tick_size = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = true
+  ];
+  int32 new_status = 11; // 0 = keep unchanged
+  bool update_enforce_post_only = 12; // If true, update enforce_post_only field
+  bool new_enforce_post_only = 13;     // New value for enforce_post_only
+}
+
+message MsgUpdateDerivativeMarketResponse {}
+
+// Governance - Fee Discount Schedule
+message MsgUpdateFeeDiscountSchedule {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  FeeDiscountSchedule schedule = 2 [(gogoproto.nullable) = false];
+}
+
+message MsgUpdateFeeDiscountScheduleResponse {}
+
+// Governance - Trading Rewards Campaign Launch
+message MsgLaunchTradingRewardCampaign {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  TradingRewardCampaignInfo campaign_info = 2;
+  repeated CampaignRewardPool campaign_reward_pools = 3;
+}
+
+message MsgLaunchTradingRewardCampaignResponse {}
+
+// Governance - Trading Rewards Campaign Update
+message MsgUpdateTradingRewardCampaign {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  TradingRewardCampaignInfo campaign_info = 2;
+  repeated CampaignRewardPool campaign_reward_pools_additions = 3;
+  repeated CampaignRewardPool campaign_reward_pools_updates = 4;
+}
+
+message MsgUpdateTradingRewardCampaignResponse {}
+
+// Governance - Module Params
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  Params params = 2 [(gogoproto.nullable) = false];
+}
+
+message MsgUpdateParamsResponse {}
+
+// Phase 3: Conditional Orders
+
+// Create Spot Conditional Order
+message MsgCreateSpotConditionalOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  
+  ConditionalOrderType order_type = 4;
+  TriggerCondition trigger_condition = 5;
+  
+  string trigger_price = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  string quantity = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  string limit_price = 8 [  // For stop-limit orders
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  string trailing_offset = 9 [  // For trailing stops
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  bool is_buy = 10;
+  int64 expiry_block = 11;
+  string cid = 12;  // Client Order ID
+}
+
+message MsgCreateSpotConditionalOrderResponse {
+  string order_hash = 1;
+}
+
+// Create Derivative Conditional Order
+message MsgCreateDerivativeConditionalOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  
+  ConditionalOrderType order_type = 4;
+  TriggerCondition trigger_condition = 5;
+  
+  string trigger_price = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  string quantity = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  string margin = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  string limit_price = 9 [  // For stop-limit orders
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  string trailing_offset = 10 [  // For trailing stops
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  bool is_long = 11;
+  bool is_reduce_only = 12;
+  int64 expiry_block = 13;
+  string cid = 14;  // Client Order ID
+}
+
+message MsgCreateDerivativeConditionalOrderResponse {
+  string order_hash = 1;
+}
+
+// Cancel Conditional Order
+message MsgCancelConditionalOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string order_hash = 4;
+  bool is_derivative = 5;  // true for derivative, false for spot
+}
+
+message MsgCancelConditionalOrderResponse {}
+
+// ==================== Phase 7: Binary Options Markets ====================
+
+// MsgLaunchBinaryOptionsMarket creates a new binary options market (governance only)
+message MsgLaunchBinaryOptionsMarket {
+  option (cosmos.msg.v1.signer) = "authority";
+  
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  string ticker = 2;                   // e.g. "BTC>50000"
+  string oracle_symbol = 3;            // Oracle identifier
+  string oracle_provider = 4;          // Oracle provider
+  int32 oracle_type = 5;               // Oracle type
+  uint32 oracle_scale_factor = 6;      // Oracle scale factor
+  int64 expiration_timestamp = 7;      // Expiration time (Unix timestamp)
+  int64 settlement_timestamp = 8;      // Settlement time (Unix timestamp)
+  string admin = 9;                    // Admin address
+  string quote_denom = 10;             // Quote denomination
+  string maker_fee_rate = 11 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 12 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_price_tick_size = 13 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 14 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_notional = 15 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string description = 16;
+}
+
+message MsgLaunchBinaryOptionsMarketResponse {
+  string market_id = 1;
+}
+
+// MsgAdminSettleBinaryOptionsMarket allows admin to manually settle a market
+message MsgAdminSettleBinaryOptionsMarket {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;                   // Must be market admin
+  string market_id = 2;
+  string settlement_price = 3 [        // Must be 0 or 1
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message MsgAdminSettleBinaryOptionsMarketResponse {}
+
+// MsgInstantBinaryOptionsMarketLaunch creates a binary options market instantly with a listing fee
+message MsgInstantBinaryOptionsMarketLaunch {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string ticker = 2;
+  string oracle_symbol = 3;
+  string oracle_provider = 4;
+  int32 oracle_type = 5;
+  uint32 oracle_scale_factor = 6;
+  string maker_fee_rate = 7 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 8 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int64 expiration_timestamp = 9;
+  int64 settlement_timestamp = 10;
+  string admin = 11;
+  string quote_denom = 12;
+  string min_price_tick_size = 13 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 14 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_notional = 15 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string description = 16;
+}
+
+message MsgInstantBinaryOptionsMarketLaunchResponse {}
+
+// MsgCreateBinaryOptionsLimitOrder creates a limit order for a binary options market
+message MsgCreateBinaryOptionsLimitOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 7;
+  bool is_reduce_only = 8;
+  bool is_post_only = 9;
+  exchange.v1.TimeInForce time_in_force = 10;
+}
+
+message MsgCreateBinaryOptionsLimitOrderResponse {
+  string order_hash = 1;
+  string cid = 2;
+}
+
+// MsgCreateBinaryOptionsMarketOrder creates a market order for a binary options market
+message MsgCreateBinaryOptionsMarketOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 7;
+  bool is_reduce_only = 8;
+}
+
+message MsgCreateBinaryOptionsMarketOrderResponse {
+  string order_hash = 1;
+  string cid = 2;
+}
+
+// MsgCancelBinaryOptionsOrder cancels a binary options order
+message MsgCancelBinaryOptionsOrder {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string order_hash = 4;
+  int32 order_mask = 5;
+  string cid = 6;
+}
+
+message MsgCancelBinaryOptionsOrderResponse {}
+
+// MsgBatchCancelBinaryOptionsOrders cancels multiple binary options orders
+message MsgBatchCancelBinaryOptionsOrders {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  repeated string order_hashes = 4;
+}
+
+message MsgBatchCancelBinaryOptionsOrdersResponse {
+  repeated string cancelled_order_hashes = 1;
+}
+
+// MsgAdminUpdateBinaryOptionsMarket allows admin to update market params (expiry, settlement, status)
+message MsgAdminUpdateBinaryOptionsMarket {
+  option (cosmos.msg.v1.signer) = "sender";
+  
+  string sender = 1;
+  string market_id = 2;
+  string settlement_price = 3 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+  int64 expiration_timestamp = 4;
+  int64 settlement_timestamp = 5;
+  MarketStatus status = 6;
+  string description = 7;
+}
+
+message MsgAdminUpdateBinaryOptionsMarketResponse {}
+
+// MsgBinaryOptionsMarketParamUpdate updates parameters of a binary options market via governance
+message MsgBinaryOptionsMarketParamUpdate {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (cosmos_proto.implements_interface) = "cosmos.gov.v1beta1.Content";
+  
+  string sender = 1;
+  string market_id = 2;
+  string maker_fee_rate = 3 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+  string taker_fee_rate = 4 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+  string relayer_fee_share_rate = 5 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+  string min_price_tick_size = 6 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+  string min_quantity_tick_size = 7 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+  int64 expiration_timestamp = 8;
+  int64 settlement_timestamp = 9;
+  string settlement_price = 10 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+  string admin = 11;
+  MarketStatus status = 12;
+  OracleParams oracle_params = 13;
+  string ticker = 14;
+  string min_notional = 15 [
+    (cosmos_proto.scalar) = "cosmos.Dec",
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec"
+  ];
+}
+
+message MsgBinaryOptionsMarketParamUpdateResponse {}
+
+// Msg defines the exchange Msg service
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+  
+  rpc Deposit(MsgDeposit) returns (MsgDepositResponse);
+  rpc Withdraw(MsgWithdraw) returns (MsgWithdrawResponse);
+  rpc CreateSpotMarket(MsgCreateSpotMarket) returns (MsgCreateSpotMarketResponse);
+  rpc CreateSpotLimitOrder(MsgCreateSpotLimitOrder) returns (MsgCreateSpotLimitOrderResponse);
+  rpc CreateSpotMarketOrder(MsgCreateSpotMarketOrder) returns (MsgCreateSpotMarketOrderResponse);
+  rpc CancelSpotOrder(MsgCancelSpotOrder) returns (MsgCancelSpotOrderResponse);
+  
+  // Instant market launches (pay listing fee)
+  rpc InstantSpotMarketLaunch(MsgInstantSpotMarketLaunch) returns (MsgInstantSpotMarketLaunchResponse);
+  rpc InstantPerpetualMarketLaunch(MsgInstantPerpetualMarketLaunch) returns (MsgInstantPerpetualMarketLaunchResponse);
+  rpc InstantExpiryFuturesMarketLaunch(MsgInstantExpiryFuturesMarketLaunch) returns (MsgInstantExpiryFuturesMarketLaunchResponse);
+  
+  // Derivative markets
+  rpc CreateDerivativeMarket(MsgCreateDerivativeMarket) returns (MsgCreateDerivativeMarketResponse);
+  rpc CreateDerivativeLimitOrder(MsgCreateDerivativeLimitOrder) returns (MsgCreateDerivativeLimitOrderResponse);
+  rpc CreateDerivativeMarketOrder(MsgCreateDerivativeMarketOrder) returns (MsgCreateDerivativeMarketOrderResponse);
+  rpc CancelDerivativeOrder(MsgCancelDerivativeOrder) returns (MsgCancelDerivativeOrderResponse);
+  rpc LiquidatePosition(MsgLiquidatePosition) returns (MsgLiquidatePositionResponse);
+  rpc IncreasePositionMargin(MsgIncreasePositionMargin) returns (MsgIncreasePositionMarginResponse);
+  rpc DecreasePositionMargin(MsgDecreasePositionMargin) returns (MsgDecreasePositionMarginResponse);
+  rpc SubaccountTransfer(MsgSubaccountTransfer) returns (MsgSubaccountTransferResponse);
+  rpc ExternalTransfer(MsgExternalTransfer) returns (MsgExternalTransferResponse);
+  rpc BatchCancelSpotOrders(MsgBatchCancelSpotOrders) returns (MsgBatchCancelSpotOrdersResponse);
+  rpc BatchCancelDerivativeOrders(MsgBatchCancelDerivativeOrders) returns (MsgBatchCancelDerivativeOrdersResponse);
+  rpc BatchUpdateOrders(MsgBatchUpdateOrders) returns (MsgBatchUpdateOrdersResponse);
+  
+  // Governance operations
+  rpc UpdateSpotMarket(MsgUpdateSpotMarket) returns (MsgUpdateSpotMarketResponse);
+  rpc UpdateDerivativeMarket(MsgUpdateDerivativeMarket) returns (MsgUpdateDerivativeMarketResponse);
+  rpc UpdateFeeDiscountSchedule(MsgUpdateFeeDiscountSchedule) returns (MsgUpdateFeeDiscountScheduleResponse);
+  rpc LaunchTradingRewardCampaign(MsgLaunchTradingRewardCampaign) returns (MsgLaunchTradingRewardCampaignResponse);
+  rpc UpdateTradingRewardCampaign(MsgUpdateTradingRewardCampaign) returns (MsgUpdateTradingRewardCampaignResponse);
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+  rpc EmergencySettleMarket(MsgEmergencySettleMarket) returns (MsgEmergencySettleMarketResponse);
+  rpc UpdateExchangeEnableStatus(MsgUpdateExchangeEnableStatus) returns (MsgUpdateExchangeEnableStatusResponse);
+  
+  // Phase 3: Conditional Orders
+  rpc CreateSpotConditionalOrder(MsgCreateSpotConditionalOrder) returns (MsgCreateSpotConditionalOrderResponse);
+  rpc CreateDerivativeConditionalOrder(MsgCreateDerivativeConditionalOrder) returns (MsgCreateDerivativeConditionalOrderResponse);
+  rpc CancelConditionalOrder(MsgCancelConditionalOrder) returns (MsgCancelConditionalOrderResponse);
+  
+  // Phase 7: Binary Options Markets
+  rpc InstantBinaryOptionsMarketLaunch(MsgInstantBinaryOptionsMarketLaunch) returns (MsgInstantBinaryOptionsMarketLaunchResponse);
+  rpc LaunchBinaryOptionsMarket(MsgLaunchBinaryOptionsMarket) returns (MsgLaunchBinaryOptionsMarketResponse);
+  rpc CreateBinaryOptionsLimitOrder(MsgCreateBinaryOptionsLimitOrder) returns (MsgCreateBinaryOptionsLimitOrderResponse);
+  rpc CreateBinaryOptionsMarketOrder(MsgCreateBinaryOptionsMarketOrder) returns (MsgCreateBinaryOptionsMarketOrderResponse);
+  rpc CancelBinaryOptionsOrder(MsgCancelBinaryOptionsOrder) returns (MsgCancelBinaryOptionsOrderResponse);
+  rpc BatchCancelBinaryOptionsOrders(MsgBatchCancelBinaryOptionsOrders) returns (MsgBatchCancelBinaryOptionsOrdersResponse);
+  rpc AdminUpdateBinaryOptionsMarket(MsgAdminUpdateBinaryOptionsMarket) returns (MsgAdminUpdateBinaryOptionsMarketResponse);
+  rpc AdminSettleBinaryOptionsMarket(MsgAdminSettleBinaryOptionsMarket) returns (MsgAdminSettleBinaryOptionsMarketResponse);
+  rpc BinaryOptionsMarketParamUpdate(MsgBinaryOptionsMarketParamUpdate) returns (MsgBinaryOptionsMarketParamUpdateResponse);
+}

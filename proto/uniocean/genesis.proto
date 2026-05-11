@@ -1,0 +1,19 @@
+syntax = "proto3";
+package uniocean;
+
+import "gogoproto/gogo.proto";
+import "uniocean/uniocean.proto";
+
+// this line is used by starport scaffolding # genesis/proto/import
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/uniocean/types";
+
+// GenesisState defines the uniocean module's genesis state.
+message GenesisState {
+  // params defines all the paramaters of the module.
+  Params                params             = 1 [(gogoproto.nullable) = false];
+  repeated TokenMapping external_contracts = 2 [(gogoproto.nullable) = false];
+  repeated TokenMapping auto_contracts     = 3 [(gogoproto.nullable) = false];
+  // this line is used by starport scaffolding # genesis/proto/state
+  // this line is used by starport scaffolding # ibc/genesis/proto
+}

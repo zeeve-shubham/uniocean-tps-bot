@@ -1,0 +1,88 @@
+syntax = "proto3";
+package insurance.v1;
+
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "cosmos_proto/cosmos.proto";
+import "insurance/v1/insurance.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/insurance/types";
+
+// Query defines the gRPC querier service for the insurance module
+service Query {
+  // Params queries the module parameters
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/insurance/v1/params";
+  }
+  
+  // InsuranceFunds queries all insurance funds
+  rpc InsuranceFunds(QueryInsuranceFundsRequest) returns (QueryInsuranceFundsResponse) {
+    option (google.api.http).get = "/insurance/v1/funds";
+  }
+  
+  // InsuranceFund queries a single insurance fund by market ID
+  rpc InsuranceFund(QueryInsuranceFundRequest) returns (QueryInsuranceFundResponse) {
+    option (google.api.http).get = "/insurance/v1/fund/{market_id}";
+  }
+  
+  // EstimatedRedemptions queries estimated redemptions for an address
+  rpc EstimatedRedemptions(QueryEstimatedRedemptionsRequest) returns (QueryEstimatedRedemptionsResponse) {
+    option (google.api.http).get = "/insurance/v1/estimated_redemptions/{market_id}/{address}";
+  }
+  
+  // PendingRedemptions queries pending redemptions for an address
+  rpc PendingRedemptions(QueryPendingRedemptionsRequest) returns (QueryPendingRedemptionsResponse) {
+    option (google.api.http).get = "/insurance/v1/pending_redemptions/{market_id}/{address}";
+  }
+}
+
+// QueryParamsRequest is the request for querying module parameters
+message QueryParamsRequest {}
+
+// QueryParamsResponse is the response for module parameters
+message QueryParamsResponse {
+  Params params = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryInsuranceFundsRequest is the request for querying all insurance funds
+message QueryInsuranceFundsRequest {}
+
+// QueryInsuranceFundsResponse is the response for all insurance funds
+message QueryInsuranceFundsResponse {
+  repeated InsuranceFund funds = 1 [(gogoproto.nullable) = false];
+}
+
+// QueryInsuranceFundRequest is the request for querying a specific insurance fund
+message QueryInsuranceFundRequest {
+  string market_id = 1;
+}
+
+// QueryInsuranceFundResponse is the response for a specific insurance fund
+message QueryInsuranceFundResponse {
+  InsuranceFund fund = 1;
+}
+
+// QueryEstimatedRedemptionsRequest is the request for querying estimated redemptions
+message QueryEstimatedRedemptionsRequest {
+  string market_id = 1;
+  string address = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// QueryEstimatedRedemptionsResponse is the response for estimated redemptions
+message QueryEstimatedRedemptionsResponse {
+  string amount = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// QueryPendingRedemptionsRequest is the request for querying pending redemptions
+message QueryPendingRedemptionsRequest {
+  string market_id = 1;
+  string address = 2 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// QueryPendingRedemptionsResponse is the response for pending redemptions
+message QueryPendingRedemptionsResponse {
+  repeated RedemptionSchedule redemptions = 1 [(gogoproto.nullable) = false];
+}

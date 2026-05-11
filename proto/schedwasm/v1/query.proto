@@ -1,0 +1,56 @@
+syntax = "proto3";
+package schedwasm.v1;
+
+import "google/api/annotations.proto";
+import "cosmos_proto/cosmos.proto";
+import "schedwasm/v1/types.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/schedwasm/types";
+
+service Query {
+  // Params returns the schedwasm module parameters
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/schedwasm/v1/params";
+  }
+
+  // ContractRegistration returns a contract's registration details
+  rpc ContractRegistration(QueryContractRegistrationRequest) returns (QueryContractRegistrationResponse) {
+    option (google.api.http).get = "/schedwasm/v1/contracts/{contract_address}";
+  }
+
+  // RegisteredContracts returns all registered contracts
+  rpc RegisteredContracts(QueryRegisteredContractsRequest) returns (QueryRegisteredContractsResponse) {
+    option (google.api.http).get = "/schedwasm/v1/contracts";
+  }
+
+  // ActiveContracts returns only active registered contracts
+  rpc ActiveContracts(QueryActiveContractsRequest) returns (QueryActiveContractsResponse) {
+    option (google.api.http).get = "/schedwasm/v1/active-contracts";
+  }
+}
+
+message QueryParamsRequest {}
+
+message QueryParamsResponse {
+  Params params = 1;
+}
+
+message QueryContractRegistrationRequest {
+  string contract_address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+message QueryContractRegistrationResponse {
+  ContractRegistration registration = 1;
+}
+
+message QueryRegisteredContractsRequest {}
+
+message QueryRegisteredContractsResponse {
+  repeated ContractRegistration registrations = 1;
+}
+
+message QueryActiveContractsRequest {}
+
+message QueryActiveContractsResponse {
+  repeated ContractRegistration active_contracts = 1;
+}

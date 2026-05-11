@@ -1,0 +1,24 @@
+syntax = "proto3";
+package revenue.v1;
+
+import "cosmos/base/v1beta1/coin.proto";
+import "gogoproto/gogo.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/revenue/types";
+
+message DenomOracleSymbol {
+  string denom = 1;
+  string symbol = 2;
+}
+
+message Params {
+  bool enabled = 1;
+  string target_denom = 2;
+  uint64 epoch_blocks = 3;
+  cosmos.base.v1beta1.Coin min_lot = 4 [(gogoproto.nullable) = false];
+  uint32 max_sell_bps_per_epoch = 5;
+  uint32 burn_bps = 6;
+  uint32 insurance_bps = 7;
+  uint32 treasury_bps = 8;
+  repeated DenomOracleSymbol denom_oracle_symbols = 9 [(gogoproto.nullable) = false];
+}

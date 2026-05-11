@@ -1,0 +1,108 @@
+syntax = "proto3";
+package insurance.v1;
+
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+import "insurance/v1/insurance.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/insurance/types";
+
+// Msg defines the insurance Msg service
+service Msg {
+  option (cosmos.msg.v1.service) = true;
+
+  // CreateInsuranceFund creates an insurance fund for a derivative market
+  rpc CreateInsuranceFund(MsgCreateInsuranceFund) returns (MsgCreateInsuranceFundResponse);
+  
+  // Underwrite deposits coins to underwrite an insurance fund
+  rpc Underwrite(MsgUnderwrite) returns (MsgUnderwriteResponse);
+  
+  // RequestRedemption requests a redemption of the sender's insurance fund tokens
+  rpc RequestRedemption(MsgRequestRedemption) returns (MsgRequestRedemptionResponse);
+  
+  // UpdateParams updates the insurance module parameters
+  rpc UpdateParams(MsgUpdateParams) returns (MsgUpdateParamsResponse);
+}
+
+// MsgCreateInsuranceFund defines a message to create an insurance fund for a derivative market
+message MsgCreateInsuranceFund {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+  
+  // Creator of the insurance fund
+  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  
+  // Ticker for the derivative market
+  string ticker = 2;
+  
+  // Coin denom to use for the market quote denom
+  string quote_denom = 3;
+  
+  // Oracle base currency
+  string oracle_base = 4;
+  
+  // Oracle quote currency
+  string oracle_quote = 5;
+  
+  // Expiration time of the market. -1 for perpetual markets, specific timestamp for binary options
+  int64 expiry = 6;
+  
+  // Initial deposit of the insurance fund
+  cosmos.base.v1beta1.Coin initial_deposit = 7 [(gogoproto.nullable) = false];
+}
+
+message MsgCreateInsuranceFundResponse {}
+
+// MsgUnderwrite defines a message for depositing coins to underwrite an insurance fund
+message MsgUnderwrite {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+  
+  // Address of the underwriter
+  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  
+  // MarketID of the insurance fund
+  string market_id = 2;
+  
+  // Amount of quote_denom to underwrite the insurance fund
+  cosmos.base.v1beta1.Coin deposit = 3 [(gogoproto.nullable) = false];
+}
+
+message MsgUnderwriteResponse {}
+
+// MsgRequestRedemption defines a message for requesting a redemption of the sender's insurance fund tokens
+message MsgRequestRedemption {
+  option (cosmos.msg.v1.signer) = "sender";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+  
+  // Address of the underwriter requesting a redemption
+  string sender = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  
+  // MarketID of the insurance fund
+  string market_id = 2;
+  
+  // Insurance fund share token amount to be redeemed
+  cosmos.base.v1beta1.Coin amount = 3 [(gogoproto.nullable) = false];
+}
+
+message MsgRequestRedemptionResponse {}
+
+// MsgUpdateParams defines a message to update insurance module parameters
+message MsgUpdateParams {
+  option (cosmos.msg.v1.signer) = "authority";
+  option (gogoproto.equal) = false;
+  option (gogoproto.goproto_getters) = false;
+  
+  // Authority is the address that can update params (usually gov module account)
+  string authority = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  
+  // Params defines the insurance module parameters to update
+  Params params = 2 [(gogoproto.nullable) = false];
+}
+
+message MsgUpdateParamsResponse {}

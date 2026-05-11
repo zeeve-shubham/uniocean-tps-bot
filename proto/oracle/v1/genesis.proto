@@ -1,0 +1,26 @@
+syntax = "proto3";
+package oracle.v1;
+
+import "gogoproto/gogo.proto";
+import "oracle/v1/oracle.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/oracle/types";
+
+// GenesisState defines the oracle module's genesis state
+message GenesisState {
+  // Params defines the module parameters
+  Params params = 1 [(gogoproto.nullable) = false];
+  
+  // Price states for all symbols
+  repeated PriceState price_states = 2 [(gogoproto.nullable) = false];
+  
+  // Historical price records for each symbol
+  // Map of symbol → list of price records
+  map<string, PriceHistory> price_histories = 3;
+}
+
+// PriceHistory stores the historical prices for a symbol
+message PriceHistory {
+  string symbol = 1;
+  repeated PriceRecord records = 2 [(gogoproto.nullable) = false];
+}

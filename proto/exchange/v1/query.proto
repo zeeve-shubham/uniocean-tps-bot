@@ -1,0 +1,426 @@
+syntax = "proto3";
+package exchange.v1;
+
+import "gogoproto/gogo.proto";
+import "google/api/annotations.proto";
+import "exchange/v1/exchange.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types";
+
+service Query {
+  rpc SpotMarkets(QuerySpotMarketsRequest) returns (QuerySpotMarketsResponse) {
+    option (google.api.http).get = "/exchange/v1/spot_markets";
+  }
+  
+  rpc SpotMarket(QuerySpotMarketRequest) returns (QuerySpotMarketResponse) {
+    option (google.api.http).get = "/exchange/v1/spot_markets/{market_id}";
+  }
+  
+  rpc SpotOrders(QuerySpotOrdersRequest) returns (QuerySpotOrdersResponse) {
+    option (google.api.http).get = "/exchange/v1/spot_orders/{market_id}";
+  }
+  
+  rpc SpotOrdersBySubaccount(QuerySpotOrdersBySubaccountRequest) returns (QuerySpotOrdersBySubaccountResponse) {
+    option (google.api.http).get = "/exchange/v1/spot_orders/subaccount/{subaccount_id}";
+  }
+  
+  rpc SpotOrderbook(QuerySpotOrderbookRequest) returns (QuerySpotOrderbookResponse) {
+    option (google.api.http).get = "/exchange/v1/spot_orderbook/{market_id}";
+  }
+  
+  rpc DerivativeMarkets(QueryDerivativeMarketsRequest) returns (QueryDerivativeMarketsResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_markets";
+  }
+  
+  rpc DerivativeMarket(QueryDerivativeMarketRequest) returns (QueryDerivativeMarketResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_markets/{market_id}";
+  }
+  
+  rpc DerivativeOrders(QueryDerivativeOrdersRequest) returns (QueryDerivativeOrdersResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_orders/{market_id}";
+  }
+  
+  rpc DerivativeOrdersBySubaccount(QueryDerivativeOrdersBySubaccountRequest) returns (QueryDerivativeOrdersBySubaccountResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_orders/subaccount/{subaccount_id}";
+  }
+  
+  rpc DerivativeOrderbook(QueryDerivativeOrderbookRequest) returns (QueryDerivativeOrderbookResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_orderbook/{market_id}";
+  }
+  
+  rpc SubaccountDeposits(QuerySubaccountDepositsRequest) returns (QuerySubaccountDepositsResponse) {
+    option (google.api.http).get = "/exchange/v1/subaccount_deposits/{subaccount_id}";
+  }
+  
+  rpc DerivativePositions(QueryDerivativePositionsRequest) returns (QueryDerivativePositionsResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_positions/{subaccount_id}";
+  }
+  
+  rpc DerivativePosition(QueryDerivativePositionRequest) returns (QueryDerivativePositionResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_positions/{subaccount_id}/{market_id}";
+  }
+  
+  rpc Params(QueryParamsRequest) returns (QueryParamsResponse) {
+    option (google.api.http).get = "/exchange/v1/params";
+  }
+  
+  rpc ExchangeStatus(QueryExchangeStatusRequest) returns (QueryExchangeStatusResponse) {
+    option (google.api.http).get = "/exchange/v1/exchange_status";
+  }
+  
+  rpc RiskIndex(QueryRiskIndexRequest) returns (QueryRiskIndexResponse) {
+    option (google.api.http).get = "/exchange/v1/risk_index/{market_id}";
+  }
+  
+  rpc HighRiskPositions(QueryHighRiskPositionsRequest) returns (QueryHighRiskPositionsResponse) {
+    option (google.api.http).get = "/exchange/v1/high_risk_positions/{market_id}";
+  }
+  
+  // Trading Rewards queries
+  rpc TradingRewardCampaign(QueryTradingRewardCampaignRequest) returns (QueryTradingRewardCampaignResponse) {
+    option (google.api.http).get = "/exchange/v1/trading_reward_campaign";
+  }
+  
+  rpc AccountTradingRewardPoints(QueryAccountTradingRewardPointsRequest) returns (QueryAccountTradingRewardPointsResponse) {
+    option (google.api.http).get = "/exchange/v1/trading_reward_points/{account}";
+  }
+  
+  rpc AccountPendingTradingRewards(QueryAccountPendingTradingRewardsRequest) returns (QueryAccountPendingTradingRewardsResponse) {
+    option (google.api.http).get = "/exchange/v1/pending_trading_rewards/{account}";
+  }
+  
+  // Fee Discount queries
+  rpc FeeDiscountSchedule(QueryFeeDiscountScheduleRequest) returns (QueryFeeDiscountScheduleResponse) {
+    option (google.api.http).get = "/exchange/v1/fee_discount_schedule";
+  }
+  
+  rpc AccountFeeDiscountInfo(QueryAccountFeeDiscountInfoRequest) returns (QueryAccountFeeDiscountInfoResponse) {
+    option (google.api.http).get = "/exchange/v1/fee_discount_info/{account}";
+  }
+  
+  // Phase 3: Conditional Orders queries
+  rpc SpotConditionalOrders(QuerySpotConditionalOrdersRequest) returns (QuerySpotConditionalOrdersResponse) {
+    option (google.api.http).get = "/exchange/v1/spot_conditional_orders/{market_id}";
+  }
+  
+  rpc SpotConditionalOrdersBySubaccount(QuerySpotConditionalOrdersBySubaccountRequest) returns (QuerySpotConditionalOrdersBySubaccountResponse) {
+    option (google.api.http).get = "/exchange/v1/spot_conditional_orders/subaccount/{subaccount_id}";
+  }
+  
+  rpc DerivativeConditionalOrders(QueryDerivativeConditionalOrdersRequest) returns (QueryDerivativeConditionalOrdersResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_conditional_orders/{market_id}";
+  }
+  
+  rpc DerivativeConditionalOrdersBySubaccount(QueryDerivativeConditionalOrdersBySubaccountRequest) returns (QueryDerivativeConditionalOrdersBySubaccountResponse) {
+    option (google.api.http).get = "/exchange/v1/derivative_conditional_orders/subaccount/{subaccount_id}";
+  }
+  
+  // Phase 7: Binary Options Markets queries
+  rpc BinaryOptionsMarkets(QueryBinaryOptionsMarketsRequest) returns (QueryBinaryOptionsMarketsResponse) {
+    option (google.api.http).get = "/exchange/v1/binary_options_markets";
+  }
+  
+  rpc BinaryOptionsMarket(QueryBinaryOptionsMarketRequest) returns (QueryBinaryOptionsMarketResponse) {
+    option (google.api.http).get = "/exchange/v1/binary_options_market/{market_id}";
+  }
+
+  rpc BinaryOptionsOrders(QueryBinaryOptionsOrdersRequest) returns (QueryBinaryOptionsOrdersResponse) {
+    option (google.api.http).get = "/exchange/v1/binary_options_orders/{market_id}";
+  }
+
+  rpc BinaryOptionsOrdersBySubaccount(QueryBinaryOptionsOrdersBySubaccountRequest) returns (QueryBinaryOptionsOrdersBySubaccountResponse) {
+    option (google.api.http).get = "/exchange/v1/binary_options_orders/subaccount/{subaccount_id}";
+  }
+
+  rpc BinaryOptionsOrderbook(QueryBinaryOptionsOrderbookRequest) returns (QueryBinaryOptionsOrderbookResponse) {
+    option (google.api.http).get = "/exchange/v1/binary_options_orderbook/{market_id}";
+  }
+}
+
+message QuerySpotMarketsRequest {}
+message QuerySpotMarketsResponse {
+  repeated SpotMarket markets = 1;
+}
+
+message QuerySpotMarketRequest {
+  string market_id = 1;
+}
+message QuerySpotMarketResponse {
+  SpotMarket market = 1;
+}
+
+message QuerySpotOrdersRequest {
+  string market_id = 1;
+  uint64 offset = 2;
+  uint64 limit = 3;
+}
+message QuerySpotOrdersResponse {
+  repeated SpotLimitOrder buy_orders = 1;
+  repeated SpotLimitOrder sell_orders = 2;
+}
+
+message QuerySpotOrdersBySubaccountRequest {
+  string subaccount_id = 1;
+  string market_id = 2; // optional filter by market
+  uint64 offset = 3;
+  uint64 limit = 4;
+}
+message QuerySpotOrdersBySubaccountResponse {
+  repeated SpotLimitOrder orders = 1;
+}
+
+message QuerySpotOrderbookRequest {
+  string market_id = 1;
+  uint32 max_levels = 2; // optional max depth per side (0 = all)
+}
+message QuerySpotOrderbookResponse {
+  repeated PriceLevel buy_levels = 1;
+  repeated PriceLevel sell_levels = 2;
+}
+
+message QueryDerivativeMarketsRequest {}
+message QueryDerivativeMarketsResponse {
+  repeated DerivativeMarket markets = 1;
+}
+
+message QueryDerivativeMarketRequest {
+  string market_id = 1;
+}
+message QueryDerivativeMarketResponse {
+  DerivativeMarket market = 1;
+  PerpetualMarketFunding funding = 2;
+}
+
+message QueryDerivativeOrdersRequest {
+  string market_id = 1;
+  uint64 offset = 2;
+  uint64 limit = 3;
+}
+message QueryDerivativeOrdersResponse {
+  repeated DerivativeLimitOrder buy_orders = 1;
+  repeated DerivativeLimitOrder sell_orders = 2;
+}
+
+message QueryDerivativeOrdersBySubaccountRequest {
+  string subaccount_id = 1;
+  string market_id = 2; // optional filter by market
+  uint64 offset = 3;
+  uint64 limit = 4;
+}
+message QueryDerivativeOrdersBySubaccountResponse {
+  repeated DerivativeLimitOrder orders = 1;
+}
+
+message QueryDerivativeOrderbookRequest {
+  string market_id = 1;
+  uint32 max_levels = 2; // optional max depth per side (0 = all)
+}
+message QueryDerivativeOrderbookResponse {
+  repeated PriceLevel buy_levels = 1;
+  repeated PriceLevel sell_levels = 2;
+}
+
+message QuerySubaccountDepositsRequest {
+  string subaccount_id = 1;
+}
+message QuerySubaccountDepositsResponse {
+  repeated SubaccountDeposit deposits = 1;
+}
+
+message QueryDerivativePositionsRequest {
+  string subaccount_id = 1;
+}
+message QueryDerivativePositionsResponse {
+  repeated DerivativePosition positions = 1;
+}
+
+message QueryDerivativePositionRequest {
+  string subaccount_id = 1;
+  string market_id = 2;
+}
+message QueryDerivativePositionResponse {
+  Position position = 1;
+}
+
+message QueryParamsRequest {}
+message QueryParamsResponse {
+  Params params = 1 [(gogoproto.nullable) = false];
+}
+
+message PriceLevel {
+  string price = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message QueryRiskIndexRequest {
+  string market_id = 1;
+  uint32 min_risk_bucket = 2; // optional: minimum risk bucket to query (default 60)
+}
+
+message RiskIndexEntry {
+  string subaccount_id = 1;
+  uint32 risk_bucket = 2;
+  string margin_ratio = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message QueryRiskIndexResponse {
+  repeated RiskIndexEntry entries = 1;
+  uint32 total_count = 2;
+}
+
+message QueryHighRiskPositionsRequest {
+  string market_id = 1;
+  uint32 limit = 2; // maximum number of positions to return (default 100)
+}
+
+message QueryHighRiskPositionsResponse {
+  repeated Position positions = 1;
+}
+
+// Trading Rewards query messages
+message QueryTradingRewardCampaignRequest {}
+
+message QueryTradingRewardCampaignResponse {
+  TradingRewardCampaignInfo campaign_info = 1;
+  repeated CampaignRewardPool reward_pools = 2;
+  int64 current_campaign_end_timestamp = 3;
+}
+
+message QueryAccountTradingRewardPointsRequest {
+  string account = 1;
+}
+
+message QueryAccountTradingRewardPointsResponse {
+  string points = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message QueryAccountPendingTradingRewardsRequest {
+  string account = 1;
+}
+
+message QueryAccountPendingTradingRewardsResponse {
+  repeated TradingRewardCampaignAccountPoints pending_points = 1;
+  string total_pending_points = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Fee Discount query messages
+message QueryFeeDiscountScheduleRequest {}
+
+message QueryFeeDiscountScheduleResponse {
+  FeeDiscountSchedule schedule = 1;
+}
+
+message QueryAccountFeeDiscountInfoRequest {
+  string account = 1;
+}
+
+message QueryAccountFeeDiscountInfoResponse {
+  uint64 tier_level = 1;
+  string account_info = 2; // AccountFeeDiscountInfo
+  FeeDiscountTierInfo tier_info = 3;
+}
+
+// Phase 3: Conditional Orders query messages
+
+message QuerySpotConditionalOrdersRequest {
+  string market_id = 1;
+}
+
+message QuerySpotConditionalOrdersResponse {
+  repeated SpotConditionalOrder orders = 1;
+}
+
+message QuerySpotConditionalOrdersBySubaccountRequest {
+  string subaccount_id = 1;
+}
+
+message QuerySpotConditionalOrdersBySubaccountResponse {
+  repeated SpotConditionalOrder orders = 1;
+}
+
+message QueryDerivativeConditionalOrdersRequest {
+  string market_id = 1;
+}
+
+message QueryDerivativeConditionalOrdersResponse {
+  repeated DerivativeConditionalOrder orders = 1;
+}
+
+message QueryDerivativeConditionalOrdersBySubaccountRequest {
+  string subaccount_id = 1;
+}
+
+message QueryDerivativeConditionalOrdersBySubaccountResponse {
+  repeated DerivativeConditionalOrder orders = 1;
+}
+
+// Phase 7: Binary Options Markets query messages
+
+message QueryBinaryOptionsMarketsRequest {}
+
+message QueryBinaryOptionsMarketsResponse {
+  repeated BinaryOptionsMarket markets = 1;
+}
+
+message QueryBinaryOptionsMarketRequest {
+  string market_id = 1;
+}
+
+message QueryBinaryOptionsMarketResponse {
+  BinaryOptionsMarket market = 1;
+}
+
+message QueryBinaryOptionsOrdersRequest {
+  string market_id = 1;
+  uint64 offset = 2;
+  uint64 limit = 3;
+}
+
+message QueryBinaryOptionsOrdersResponse {
+  repeated DerivativeLimitOrder buy_orders = 1;
+  repeated DerivativeLimitOrder sell_orders = 2;
+}
+
+message QueryBinaryOptionsOrdersBySubaccountRequest {
+  string subaccount_id = 1;
+  string market_id = 2; // optional filter by market
+  uint64 offset = 3;
+  uint64 limit = 4;
+}
+
+message QueryBinaryOptionsOrdersBySubaccountResponse {
+  repeated DerivativeLimitOrder orders = 1;
+}
+
+message QueryBinaryOptionsOrderbookRequest {
+  string market_id = 1;
+  uint32 max_levels = 2; // optional max depth per side (0 = all)
+}
+
+message QueryBinaryOptionsOrderbookResponse {
+  repeated PriceLevel buy_levels = 1;
+  repeated PriceLevel sell_levels = 2;
+}
+
+// Exchange Status messages
+message QueryExchangeStatusRequest {}
+
+message QueryExchangeStatusResponse {
+  bool spot_enabled = 1;
+  bool derivatives_enabled = 2;
+}

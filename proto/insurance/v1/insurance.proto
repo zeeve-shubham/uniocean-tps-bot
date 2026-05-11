@@ -1,0 +1,75 @@
+syntax = "proto3";
+package insurance.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+import "cosmos/base/v1beta1/coin.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/insurance/types";
+
+// InsuranceFund defines all the information of the Insurance Funds by market
+message InsuranceFund {
+  // deposit denomination for the given insurance fund
+  string deposit_denom = 1;
+  
+  // insurance fund pool token denomination for the given insurance fund
+  string insurance_pool_token_denom = 2;
+  
+  // redemption_notice_period_duration defines the minimum notice period duration that must pass after an underwriter sends
+  // a redemption request before the underwriter can claim his tokens
+  google.protobuf.Duration redemption_notice_period_duration = 3 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+  
+  // balance of fund
+  string balance = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  
+  // total share tokens minted
+  string total_share = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  
+  // marketID of the derivative market
+  string market_id = 6;
+  
+  // ticker of the derivative market
+  string market_ticker = 7;
+  
+  // Oracle base currency of the derivative market
+  string oracle_base = 8;
+  
+  // Oracle quote currency of the derivative market
+  string oracle_quote = 9;
+  
+  // Expiration time of the derivative market. -1 for perpetual, specific timestamp for binary options
+  int64 expiry = 10;
+}
+
+// RedemptionSchedule defines redemption schedules from users - redemption is not executed instantly but there's redemption_notice_period_duration specified per market
+message RedemptionSchedule {
+  // id of redemption schedule
+  uint64 id = 1;
+  
+  // marketId of redemption schedule
+  string market_id = 2;
+  
+  // address of the redeemer
+  string redeemer = 3 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  
+  // the time after which the redemption can be claimed
+  google.protobuf.Timestamp claimable_redemption_time = 4 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  
+  // the insurance_pool_token amount to redeem
+  cosmos.base.v1beta1.Coin redemption_amount = 5 [(gogoproto.nullable) = false];
+}
+
+// Params is a module-wide configuration structure that stores system parameters and defines overall functioning of the insurance module
+message Params {
+  // default_redemption_notice_period_duration defines the default minimum notice period duration that must pass after an underwriter sends
+  // a redemption request before the underwriter can claim his tokens
+  google.protobuf.Duration default_redemption_notice_period_duration = 1 [(gogoproto.stdduration) = true, (gogoproto.nullable) = false];
+}

@@ -1,0 +1,22 @@
+# Compiled binary
+uniocean-load-tester
+
+# Wallet files — NEVER commit these!
+funded-wallets.log
+mnemonics.txt
+*.mnemonic
+*.log
+
+# Go test artifacts
+*.test
+*.out
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db

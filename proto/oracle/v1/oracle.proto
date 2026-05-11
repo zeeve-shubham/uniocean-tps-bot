@@ -1,0 +1,77 @@
+syntax = "proto3";
+package oracle.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos_proto/cosmos.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/oracle/types";
+
+// PriceState stores the price data for a symbol
+message PriceState {
+  // Symbol like "ETH/USDT"
+  string symbol = 1;
+  
+  // Price value (integer with 8 decimals)
+  // Example: 3210.45 USDT = 321045000000
+  string price = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  
+  // Block timestamp when price was last updated
+  int64 timestamp = 3;
+  
+  // Cumulative price for TWAP calculation
+  string cumulative_price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// PriceRecord stores historical price data
+message PriceRecord {
+  // Price value
+  string price = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  
+  // Block height when this price was recorded
+  int64 block_height = 2;
+  
+  // Timestamp
+  int64 timestamp = 3;
+}
+
+// Params stores the module parameters
+message Params {
+  // PriceFeedContract is the EVM contract address that provides prices
+  // Format: 0x... (EVM hex address)
+  // Default: 0xF7608Ced9bbf3f6653F79eeE6284A6d9b29b9B42 (ETH/USD on Uniocean)
+  string price_feed_contract = 1;
+  
+  // MaxPriceAge is the maximum age of a price in blocks
+  // If price is older, it's considered stale (0 = no limit)
+  // Default: 3600 (1 hour in seconds)
+  uint64 max_price_age = 2;
+  
+  // HistorySize is the number of historical prices to keep per symbol
+  // Default: 360 (~1 hour of history)
+  uint32 history_size = 3;
+  
+  // Decimals is the decimal precision of prices (8 for Chainlink-style, API3 standard)
+  // Default: 8
+  uint32 decimals = 4;
+  
+  // AuthorizedRelayers is the list of addresses authorized to relay prices
+  // Governance-controlled, can be updated via MsgUpdateParams
+  repeated string authorized_relayers = 5 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+}
+
+// DefaultParams contains the default parameter values
+message DefaultParams {
+  // DefaultPriceFeedContract = "0xF7608Ced9bbf3f6653F79eeE6284A6d9b29b9B42"
+  // DefaultMaxPriceAge = 3600
+  // DefaultHistorySize = 360
+  // DefaultDecimals = 8
+}

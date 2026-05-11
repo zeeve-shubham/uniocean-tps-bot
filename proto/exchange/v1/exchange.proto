@@ -1,0 +1,733 @@
+syntax = "proto3";
+package exchange.v1;
+
+import "gogoproto/gogo.proto";
+import "cosmos/base/v1beta1/coin.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types";
+
+// MarketStatus defines the status of a market
+enum MarketStatus {
+  MARKET_STATUS_UNSPECIFIED = 0;
+  ACTIVE = 1;
+  PAUSED = 2;
+  SUSPENDED = 3;
+  DEMOLISHED = 4;
+}
+
+// TimeInForce defines execution timing constraints for limit orders
+enum TimeInForce {
+  TIME_IN_FORCE_UNSPECIFIED = 0;
+  GTC = 1;  // Good-Til-Canceled (default) - order rests on book until filled or canceled
+  IOC = 2;  // Immediate-Or-Cancel - fill what you can now, cancel unfilled remainder
+  FOK = 3;  // Fill-Or-Kill - execute completely or reject entire order
+}
+
+// Params
+message Params {
+  string default_spot_maker_fee_rate = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string default_spot_taker_fee_rate = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string default_derivative_maker_fee_rate = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string default_derivative_taker_fee_rate = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string default_initial_margin_ratio = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string default_maintenance_margin_ratio = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int64 default_funding_interval = 7;
+  int64 funding_multiple = 8;
+  string relayer_fee_share_rate = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string default_hourly_funding_rate_cap = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string default_hourly_interest_rate = 11 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string liquidator_reward_share_rate = 12 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string insurance_fund_share_rate = 13 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  uint64 max_derivative_order_side_count = 14;
+  
+  // Auto-liquidation configuration (governance updatable)
+  bool enable_auto_liquidation = 15;
+  int64 auto_liquidation_interval_blocks = 16;  // Run every N blocks (0 = every block)
+  uint64 max_auto_liquidations_per_block = 17;  // Max positions to check per block
+  uint64 max_liquidations_per_run = 18;          // Max actual liquidations to execute per run
+  
+  // Default settlement configuration for NEW expiring futures markets
+  int64 default_settlement_twap_window_seconds = 19; // Default TWAP window for new markets (default: 300 = 5 min)
+  
+  // Fee discount configuration
+  string min_protocol_fee_rate = 20 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];  // Minimum protocol fee rate after discounts
+  
+  // Binary options market instant listing fee
+  cosmos.base.v1beta1.Coin binary_options_market_instant_listing_fee = 21 [
+    (gogoproto.nullable) = false
+  ];
+  
+  // Spot market instant listing fee
+  cosmos.base.v1beta1.Coin spot_market_instant_listing_fee = 22 [
+    (gogoproto.nullable) = false
+  ];
+  
+  // Perpetual market instant listing fee  
+  cosmos.base.v1beta1.Coin perpetual_market_instant_listing_fee = 23 [
+    (gogoproto.nullable) = false
+  ];
+  
+  // Expiry futures market instant listing fee
+  cosmos.base.v1beta1.Coin expiry_futures_market_instant_listing_fee = 24 [
+    (gogoproto.nullable) = false
+  ];
+
+  // Maximum allowed oracle price age in seconds for exchange-side staleness checks.
+  // This is an exchange risk-control threshold and is governance updatable.
+  uint64 max_oracle_price_age_seconds = 25;
+}
+
+// Phase 1: Spot Market
+message SpotMarket {
+  string ticker = 1;
+  string base_denom = 2;
+  string quote_denom = 3;
+  string market_id = 4;
+  string maker_fee_rate = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string relayer_fee_share_rate = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int32 status = 8;
+  string min_price_tick_size = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool enforce_post_only = 11;  // If true, all orders must be post-only (no taker orders allowed)
+}
+
+// Phase 2: Derivative Market
+message DerivativeMarket {
+  string ticker = 1;
+  string oracle_base = 2;
+  string oracle_quote = 3;
+  int32 oracle_type = 4;
+  uint32 oracle_scale_factor = 5;
+  string quote_denom = 6;
+  string market_id = 7;
+  string initial_margin_ratio = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maintenance_margin_ratio = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string maker_fee_rate = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 11 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string relayer_fee_share_rate = 12 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_perpetual = 13;
+  int32 status = 14;
+  string min_price_tick_size = 15 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 16 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string max_position_notional = 17 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string liquidator_reward_share_rate = 18 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string insurance_fund_share_rate = 19 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int64 expiry_timestamp = 20; // Unix timestamp when market expires (0 = perpetual, no expiry)
+  string settlement_price = 21 [ // Settlement price for expired futures (set at settlement)
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int64 twap_start_timestamp = 22; // Unix timestamp when TWAP calculation begins
+  int64 settlement_twap_window_seconds = 23; // TWAP window for settlement (IMMUTABLE, set at creation)
+  string max_market_open_notional = 24 [ // Market-wide total open interest limit (0 = unlimited)
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool enforce_post_only = 25;     // If true, all orders must be post-only (no taker orders allowed)
+}
+
+// Oracle parameters for a market
+message OracleParams {
+  string symbol = 1;               // Oracle symbol
+  string provider = 2;             // Oracle provider
+  int32 oracle_type = 3;           // Oracle type
+  uint32 oracle_scale_factor = 4;  // Oracle scale factor
+}
+
+// Binary Options Market - Derivative with binary ($0 or $1) outcome
+message BinaryOptionsMarket {
+  string ticker = 1;                   // e.g. "BTC>50000"
+  string oracle_symbol = 2;            // Oracle identifier for price feed
+  string oracle_provider = 3;          // Oracle provider (e.g., "band", "chainlink")
+  int32 oracle_type = 4;               // Oracle type identifier
+  uint32 oracle_scale_factor = 5;      // Scale factor for oracle price
+  int64 expiration_timestamp = 6;      // When market stops accepting new orders (Unix timestamp)
+  int64 settlement_timestamp = 7;      // When market settles positions (Unix timestamp >= expiration)
+  string admin = 8;                    // Admin address (can force settle)
+  string quote_denom = 9;              // Quote denomination (e.g., "usdt")
+  string market_id = 10;               // Unique market identifier
+  string maker_fee_rate = 11 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_fee_rate = 12 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string relayer_fee_share_rate = 13 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int32 status = 14;                   // Market status (ACTIVE, EXPIRED, DEMOLISHED)
+  string min_price_tick_size = 15 [    // Minimum price increment
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_quantity_tick_size = 16 [ // Minimum quantity increment
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string settlement_price = 17 [       // Final settlement price (0 or 1), set at settlement
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string min_notional = 18 [           // Minimum notional value per order
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string description = 19;             // Market description/metadata
+}
+
+// Spot Limit Order
+message SpotLimitOrder {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 6;
+  int64 created_at = 7;
+  string cid = 8;          // Client Order ID - optional user-defined identifier
+  int64 expiry_block = 9;  // Block height when order expires (0 = no expiry)
+  bool is_post_only = 10;  // If true, order will be rejected if it would match immediately
+  TimeInForce time_in_force = 11;  // Execution timing constraint (GTC, IOC, FOK)
+  string hold_balance = 12 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ]; // Amount of balance locked for this order
+  string fee_recipient = 13; // Address to receive trading fee for this order
+}
+
+// Spot Market Order
+message SpotMarketOrder {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string worst_price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_buy = 6;
+  string cid = 7;  // Client Order ID - optional user-defined identifier
+  string balance_hold = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];  // Amount of balance locked for this order
+}
+
+message SubaccountDeposit {
+  string subaccount_id = 1;
+  string denom = 2;
+  string available_balance = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string total_balance = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string hold_balance = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message Position {
+  string subaccount_id = 1;
+  string market_id = 2;
+  bool is_long = 3;
+  string quantity = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string entry_price = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string cumulative_funding_entry = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message DerivativePosition {
+  string subaccount_id = 1;
+  string market_id = 2;
+  Position position = 3 [(gogoproto.nullable) = false];
+}
+
+message PerpetualMarketFunding {
+  string market_id = 1;
+  string cumulative_funding = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string cumulative_price = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  int64 last_timestamp = 4;
+}
+
+// ExpiryFuturesMarketInfo stores TWAP calculation metadata for expiring futures
+// Separate storage for market-specific settlement info
+message ExpiryFuturesMarketInfo {
+  string market_id = 1;
+  int64 expiry_timestamp = 2;              // When market expires (unix timestamp)
+  int64 twap_start_timestamp = 3;          // When TWAP calculation begins
+  int64 expiration_twap_start_price_cumulative = 4; // Cumulative price at TWAP start
+  string settlement_price = 5 [            // Final settlement price (set at expiry)
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Derivative Limit Order
+message DerivativeLimitOrder {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string fillable = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_long = 8;
+  bool is_reduce_only = 9;
+  int64 created_at = 10;
+  string cid = 11;          // Client Order ID - optional user-defined identifier
+  int64 expiry_block = 12;  // Block height when order expires (0 = no expiry)
+  bool is_post_only = 13;   // If true, order will be rejected if it would match immediately
+  TimeInForce time_in_force = 14;  // Execution timing constraint (GTC, IOC, FOK)
+  string hold_balance = 15 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ]; // Amount of balance locked for this order
+  string fee_recipient = 16; // Address to receive trading fee for this order
+}
+
+// Derivative Market Order
+message DerivativeMarketOrder {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  string worst_price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string quantity = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string margin = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  bool is_long = 7;
+  bool is_reduce_only = 8;
+  string cid = 9;  // Client Order ID - optional user-defined identifier
+  string hold_balance = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ]; // Amount of balance locked for this order
+  string fee_recipient = 11; // Address to receive trading fee for this order
+}
+
+// Derivative Market Order Execution result
+message DerivativeMarketOrderExecution {
+  DerivativeMarketOrder order = 1;
+  string execution_price = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string execution_quantity = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string execution_margin = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string fee = 5 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+
+// Fee Discount Tier Configuration
+message FeeDiscountTierInfo {
+  string maker_discount_rate = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_discount_rate = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string staked_amount = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.Int",
+    (gogoproto.nullable) = false
+  ];
+  string volume = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Fee Discount Schedule (governance-controlled)
+message FeeDiscountSchedule {
+  int64 bucket_count = 1;  // Number of buckets (default: 30 days)
+  int64 bucket_duration = 2;  // Seconds per bucket (default: 86400 = 1 day)
+  repeated string quote_denoms = 3;  // Qualified quote denoms (e.g., ["uusdt", "uusd", "usdc"])
+  repeated FeeDiscountTierInfo tier_infos = 4;  // Tier requirements
+  repeated string disqualified_market_ids = 5;  // Explicit market blacklist
+}
+
+// Fee Discount Tier TTL (per-account cache)
+message FeeDiscountTierTTL {
+  uint64 tier = 1;
+  int64 ttl_timestamp = 2;
+}
+
+// Fee Discount Rates (calculated discount)
+message FeeDiscountRates {
+  string maker_discount_rate = 1 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_discount_rate = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Account Volume (for queries)
+message AccountVolume {
+  string account = 1;
+  string volume = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Fee Discount Account Tier TTL (for queries)
+message FeeDiscountAccountTierTTL {
+  string account = 1;
+  FeeDiscountTierTTL tier_ttl = 2;
+}
+
+// Fee Discount Bucket Volume Accounts (for queries)
+message FeeDiscountBucketVolumeAccounts {
+  int64 bucket_start_timestamp = 1;
+  repeated AccountVolume account_volume = 2;
+}
+
+// ==================== Trading Rewards ====================
+
+// Trading Reward Campaign Info
+message TradingRewardCampaignInfo {
+  int64 campaign_duration_seconds = 1;  // Duration of each campaign period
+  repeated string quote_denoms = 2;      // Qualified quote denoms (e.g., ["uusd", "uusdt", "usdc"])
+  TradingRewardCampaignBoostInfo trading_reward_boost_info = 3;  // Market-specific multipliers
+  repeated string disqualified_market_ids = 4;  // Blacklisted markets
+}
+
+// Trading Reward Campaign Boost Info (market multipliers)
+message TradingRewardCampaignBoostInfo {
+  repeated string boosted_spot_market_ids = 1;
+  repeated PointsMultiplier spot_market_multipliers = 2;
+  repeated string boosted_derivative_market_ids = 3;
+  repeated PointsMultiplier derivative_market_multipliers = 4;
+}
+
+// Points Multiplier (maker/taker boost per market)
+message PointsMultiplier {
+  string market_id = 1;
+  string maker_points_multiplier = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_points_multiplier = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Campaign Reward Pool (token allocation for a campaign period)
+message CampaignRewardPool {
+  int64 start_timestamp = 1;
+  repeated cosmos.base.v1beta1.Coin max_campaign_rewards = 2 [(gogoproto.nullable) = false];
+}
+
+// Trading Reward Account Points (current campaign)
+message TradingRewardCampaignAccountPoints {
+  string account = 1;
+  string points = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+// Trading Reward Account Pending Points (vesting)
+message TradingRewardCampaignAccountPendingPoints {
+  int64 reward_pool_start_timestamp = 1;
+  repeated TradingRewardCampaignAccountPoints account_points = 2;
+}
+
+// ==================== Conditional Orders (Phase 3) ====================
+
+// Conditional Order Type
+enum ConditionalOrderType {
+  CONDITIONAL_ORDER_TYPE_UNSPECIFIED = 0;
+  STOP_LOSS = 1;          // Sell when price falls below trigger
+  TAKE_PROFIT = 2;        // Sell when price rises above trigger
+  STOP_LIMIT = 3;         // Place limit order when price hits trigger
+  TRAILING_STOP = 4;      // Dynamic stop that follows price movements
+}
+
+// Trigger Condition
+enum TriggerCondition {
+  TRIGGER_CONDITION_UNSPECIFIED = 0;
+  MARK_PRICE_ABOVE = 1;   // Trigger when mark price >= trigger price
+  MARK_PRICE_BELOW = 2;   // Trigger when mark price <= trigger price
+  INDEX_PRICE_ABOVE = 3;  // Trigger when index price >= trigger price
+  INDEX_PRICE_BELOW = 4;  // Trigger when index price <= trigger price
+}
+
+// Conditional Order (shared base for spot and derivative)
+message ConditionalOrder {
+  string order_hash = 1;
+  string subaccount_id = 2;
+  string market_id = 3;
+  
+  ConditionalOrderType order_type = 4;
+  TriggerCondition trigger_condition = 5;
+  
+  // Trigger price that activates the order
+  string trigger_price = 6 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  // Quantity to trade when triggered
+  string quantity = 7 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  // For stop-limit orders: limit price to use
+  string limit_price = 8 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  // For trailing stops: offset from current price
+  string trailing_offset = 9 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  // For trailing stops: best price seen so far
+  string trailing_best_price = 10 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  bool is_buy = 11;
+  bool is_reduce_only = 12;  // For derivatives: only reduce position
+  int64 created_at = 13;
+  int64 expiry_block = 14;  // Block height when order expires (0 = no expiry)
+  string cid = 15;  // Client Order ID
+}
+
+// Spot Conditional Order
+message SpotConditionalOrder {
+  ConditionalOrder order = 1 [(gogoproto.nullable) = false];
+}
+
+// Derivative Conditional Order  
+message DerivativeConditionalOrder {
+  ConditionalOrder order = 1 [(gogoproto.nullable) = false];
+  
+  // Margin to use for derivative positions
+  string margin = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  
+  bool is_long = 3;
+}
+
+// Conditional Order Trigger Event (for tracking)
+message ConditionalOrderTrigger {
+  string order_hash = 1;
+  string market_id = 2;
+  int64 trigger_block_height = 3;
+  string trigger_price = 4 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string resulting_order_hash = 5;  // Hash of the triggered market/limit order
+}
+
+// Market ID status (for qualified markets)
+message MarketIDStatus {
+  string market_id = 1;
+}
+
+// Market Points Multiplier (for trading reward multipliers)
+message MarketPointsMultiplier {
+  string market_id = 1;
+  string maker_points_multiplier = 2 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+  string taker_points_multiplier = 3 [
+    (gogoproto.customtype) = "cosmossdk.io/math.LegacyDec",
+    (gogoproto.nullable) = false
+  ];
+}
+
+message GenesisState {
+  Params params = 1 [(gogoproto.nullable) = false];
+  repeated SpotMarket spot_markets = 2;
+  repeated DerivativeMarket derivative_markets = 3;
+  repeated SubaccountDeposit deposits = 4;
+  repeated DerivativePosition derivative_positions = 5;
+  repeated PerpetualMarketFunding perpetual_market_fundings = 6;
+  bool is_spot_exchange_enabled = 7;
+  bool is_derivatives_exchange_enabled = 8;
+  repeated ExpiryFuturesMarketInfo expiry_futures_market_infos = 9; // TWAP tracking for expiring futures
+  
+  // Fee discount state
+  FeeDiscountSchedule fee_discount_schedule = 10;
+  repeated FeeDiscountAccountTierTTL fee_discount_account_tier_ttl = 11;
+  repeated FeeDiscountBucketVolumeAccounts fee_discount_bucket_volume_accounts = 12;
+  repeated AccountVolume fee_discount_account_past_bucket_total_volume = 13;
+  bool is_first_fee_cycle_finished = 14;
+  
+  // Trading rewards state
+  TradingRewardCampaignInfo trading_reward_campaign_info = 15;
+  repeated CampaignRewardPool trading_reward_pools = 16;
+  repeated CampaignRewardPool trading_reward_pending_pools = 17;
+  repeated TradingRewardCampaignAccountPoints trading_reward_campaign_account_points = 18;
+  repeated TradingRewardCampaignAccountPendingPoints trading_reward_campaign_account_pending_points = 19;
+  int64 trading_reward_current_campaign_end_timestamp = 20;
+  repeated MarketIDStatus trading_reward_qualified_market_ids = 21;
+  repeated MarketPointsMultiplier trading_reward_market_points_multipliers = 22;
+  
+  // Conditional orders state (Phase 3)
+  repeated SpotConditionalOrder spot_conditional_orders = 23;
+  repeated DerivativeConditionalOrder derivative_conditional_orders = 24;
+  
+  // Binary options markets (Phase 7)
+  repeated BinaryOptionsMarket binary_options_markets = 25;
+}

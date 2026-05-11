@@ -1,0 +1,60 @@
+syntax = "proto3";
+package schedwasm.v1;
+
+import "cosmos/msg/v1/msg.proto";
+import "cosmos_proto/cosmos.proto";
+
+option go_package = "code.zeeve.net/client-projects/cronos-whitelabelling/x/schedwasm/types";
+
+// FundingMode defines how a contract's execution is funded
+enum FundingMode {
+  FUNDING_MODE_UNSPECIFIED = 0;
+  // Contract pays for its own execution
+  SELF_FUNDED = 1;
+  // Contract uses only fee grant allowance
+  GRANT_ONLY = 2;
+  // Contract tries allowance first, falls back to self-funding
+  DUAL = 3;
+}
+
+// ContractRegistration stores registration details for a scheduled contract
+message ContractRegistration {
+  // Address of the contract
+  string contract_address = 1 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  // Code ID of the contract (verified at runtime)
+  uint64 code_id = 2;
+  // Whether to skip code ID verification on contract update
+  bool allow_code_id_mismatch = 3;
+  // Whether to keep contract pinned in memory
+  bool is_pinned = 4;
+  // Maximum gas allowed per execution
+  int64 gas_limit = 5;
+  // Gas price per unit
+  int64 gas_price = 6;
+  // How the contract is funded
+  FundingMode funding_mode = 7;
+  // Fee granter address (if using fee grant)
+  string granter_address = 8 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  // Whether the contract is currently active
+  bool is_active = 9;
+  // Owner of the contract registration
+  string owner = 10 [(cosmos_proto.scalar) = "cosmos.AddressString"];
+  // Number of successful executions
+  uint64 execution_count = 11;
+  // Number of failed executions
+  uint64 failure_count = 12;
+}
+
+// Params defines the parameters for the schedwasm module
+message Params {
+  // Whether execution is enabled globally
+  bool is_execution_enabled = 1;
+  // Maximum gas allowed per contract execution
+  int64 max_execution_gas = 2;
+  // Minimum gas price required for a contract
+  int64 min_gas_price = 3;
+  // Whether to allow code ID exemption
+  bool allow_code_id_exempt = 4;
+  // Maximum number of contracts that can execute per block
+  uint32 max_contracts_per_block = 5;
+}
