@@ -24,9 +24,11 @@ The bot connects to the Uniocean Tendermint WebSocket RPC, loads up to 50 wallet
 ```
 uniocean-tps-bot/
 ├── bot/
-│   ├── main.go           # CLI entrypoint, wallet loading, gRPC setup
+│   ├── main.go           # CLI entrypoint, wallet loading, REST account fetch
 │   ├── client.go         # Transaction builder and signer (loadtest.Client interface)
 │   └── eth_account.go    # Minimal EthAccount type for protobuf decoding
+├── tps-checker/
+│   └── main.go           # On-chain TPS measurement tool (polls Tendermint RPC)
 ├── x/exchange/types/
 │   ├── tx.pb.go          # Protobuf-generated exchange transaction types
 │   ├── msgs.go           # sdk.Msg interface implementations
@@ -269,21 +271,104 @@ If you see `Loaded 50 wallets` printed before the help text, your wallet file is
 
 ---
 
-## 🔍 Understanding the Output
+## 🔍 Understanding the Load Tester Output
 
 ```
 Loaded 50 wallets
-INFO[0021] Connecting to remote endpoints       ctx=loadtest
-INFO[0022] Connected to remote Tendermint RPC   ctx="transactor[wss://...]"
-INFO[0022] Initiating load test                 ctx=loadtest
-INFO[0023] Sending batch of transactions        toSend=100
+INFO[0014] Connecting to remote endpoints        ctx=loadtest
+INFO[0015] Connected to remote Tendermint RPC    ctx="transactor[wss://...]"
+INFO[0015] Initiating load test                  ctx=loadtest
+INFO[0016] Sending batch of transactions         toSend=500
+INFO[0017] Sending batch of transactions         toSend=500
 ...
-INFO[0060] Load test complete                   ctx=loadtest
-INFO[0060] Total txs sent: 52400               ctx=loadtest
-INFO[0060] Avg tx rate: 873 tx/s               ctx=loadtest
+INFO[0075] Time limit reached for load testing   ctx="transactor[wss://...]"
+INFO[0075] Load test complete!                   ctx=loadtest
 ```
 
-The final summary shows total transactions sent and the average TPS achieved.
+> ⚠️ **Important:** `toSend=500` means **500 transactions were broadcast** per second, NOT that 500 txs were included in blocks. The chain may accept fewer depending on block gas limits, mempool pressure, and validator throughput. Use the **TPS Checker** below to measure what was actually committed on-chain.
+
+---
+
+## 📊 Measuring Real On-Chain TPS
+
+The load tester only tells you how many transactions were *sent*. To find out how many were actually *included in blocks*, use the included `tps-checker` tool — it polls the Tendermint RPC, reads each block's transaction count, and calculates real on-chain TPS.
+
+### Build the TPS Checker
+
+```bash
+go build -o tps-checker ./tps-checker
+```
+
+### Run Alongside the Load Tester
+
+Open **two terminals simultaneously**:
+
+**Terminal 1 — Load Tester:**
+```bash
+./uniocean-load-tester funded-wallets.log \
+  -c 1 -T 60 -r 500 \
+  --broadcast-tx-method async \
+  --endpoints wss://uniocean-tps.zeeve.net/websocket
+```
+
+**Terminal 2 — TPS Checker (same duration):**
+```bash
+go run ./tps-checker/main.go 60
+```
+
+Or if already compiled:
+```bash
+./tps-checker/tps-checker 60
+```
+
+### Live Output
+
+```
+🔍 Uniocean On-Chain TPS Checker
+   RPC: https://uniocean-tps.zeeve.net/cosmos
+   Observation window: 60s
+
+📦 Start block: #382688 at 11:42:57
+[  1s] 📦 Block #382689: 312 txs
+[  1s] 📊 Running total: 312 txs across 1 blocks | Avg TPS: 312.00
+
+[  2s] 📦 Block #382690: 489 txs
+[  2s] 📊 Running total: 801 txs across 2 blocks | Avg TPS: 400.50
+...
+```
+
+### Final Summary
+
+```
+═══════════════════════════════════════
+✅ TPS Measurement Complete
+   Blocks observed: #382688 → #382748 (60 blocks)
+   Wall time:        60s
+   Chain time:       62.3s
+   Total txs:        28450
+   ──────────────────────────────────
+   🚀 On-chain TPS: 456.67 tx/s
+═══════════════════════════════════════
+```
+
+### TPS Checker Flags
+
+```bash
+# Default: observe for 60 seconds
+go run ./tps-checker/main.go
+
+# Custom duration (e.g., 120 seconds)
+go run ./tps-checker/main.go 120
+```
+
+### Sent vs Committed — What's the Difference?
+
+| Metric | What it measures | Where to find it |
+|--------|-----------------|------------------|
+| **Sent TPS** | Txs broadcast to the mempool | Load tester output (`toSend=N`) |
+| **On-chain TPS** | Txs actually committed in blocks | TPS Checker (`🚀 On-chain TPS`) |
+
+A large gap between the two means the chain's block throughput is lower than the send rate — this is useful information for tuning block params.
 
 ---
 
