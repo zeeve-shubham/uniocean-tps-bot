@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,8 +19,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
 
-	"github.com/informalsystems/tm-load-test/pkg/loadtest"
 	exchangetypes "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types"
+	"github.com/informalsystems/tm-load-test/pkg/loadtest"
 )
 
 // decimals18 = 10^18 — the base unit multiplier for oceanx
@@ -38,7 +41,7 @@ func BuildSubaccountID(bech32Addr string, nonce uint64) (string, error) {
 	}
 
 	var buf [32]byte
-	copy(buf[0:20], addr)          // bytes  0–19: address
+	copy(buf[0:20], addr) // bytes  0–19: address
 	// bytes 20–23 stay zero      // bytes 20–23: 4-byte zero padding
 	binary.BigEndian.PutUint64(buf[24:], nonce) // bytes 24–31: 8-byte nonce
 
@@ -90,14 +93,38 @@ func (f *UnioceanClientFactory) NewClient(cfg loadtest.Config) (loadtest.Client,
 	}, nil
 }
 
+func activeTxTypesFromEnv() ([]int, error) {
+	raw := strings.TrimSpace(os.Getenv("UNIOCEAN_TX_TYPES"))
+	if raw == "" {
+		return []int{0, 1, 3}, nil
+	}
+
+	parts := strings.Split(raw, ",")
+	active := make([]int, 0, len(parts))
+	for _, part := range parts {
+		value, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			return nil, fmt.Errorf("invalid UNIOCEAN_TX_TYPES value %q: %w", part, err)
+		}
+		active = append(active, value)
+	}
+	if len(active) == 0 {
+		return nil, fmt.Errorf("UNIOCEAN_TX_TYPES resolved to no transaction types")
+	}
+	return active, nil
+}
+
 func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 	// 1. Pick a random wallet
 	wallet := c.factory.Wallets[c.rng.Intn(len(c.factory.Wallets))]
 
 	// 2. Randomly select transaction type
-	// Active: Deposit (0), SpotLimitOrder (1), BinaryOptionsLimitOrder (3)
-	// Skipped: DerivativeLimitOrder (2) — enable when market ID is configured
-	activeTxTypes := []int{0, 1, 3}
+	// Active by default: Deposit (0), SpotLimitOrder (1), BinaryOptionsLimitOrder (3)
+	// Override for debugging with UNIOCEAN_TX_TYPES, e.g. "0" or "1,3".
+	activeTxTypes, err := activeTxTypesFromEnv()
+	if err != nil {
+		return nil, err
+	}
 	txType := activeTxTypes[c.rng.Intn(len(activeTxTypes))]
 	var msg sdk.Msg
 
@@ -124,7 +151,7 @@ func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 		// Price must be a multiple of 0.0000001 → pick 1–10 ticks randomly
 		// Quantity must be a multiple of 0.0000001 → pick 1–100 ticks randomly
 		minTick := sdk.MustNewDecFromStr("0.0000001")
-		priceTicks := int64(c.rng.Intn(10) + 1)   // 1–10 ticks
+		priceTicks := int64(c.rng.Intn(10) + 1)     // 1–10 ticks
 		quantityTicks := int64(c.rng.Intn(100) + 1) // 1–100 ticks
 		price := minTick.MulInt64(priceTicks)
 		quantity := minTick.MulInt64(quantityTicks)
@@ -197,8 +224,9 @@ func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 	}
 
 	txBuilder.SetGasLimit(300000)
-	// Fee: 2000 oceanx base units (negligible, just enough to pass fee checks)
-	txBuilder.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("oceanx", sdk.NewInt(2000))))
+	// Fee: Provide enough to cover minimum global fee (30,000,000,000,000 oceanx base units)
+	// We'll set 50,000,000,000,000 just to be safe.
+	txBuilder.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("oceanx", sdk.NewInt(50_000_000_000_000))))
 	txBuilder.SetMemo("uniocean-tps-bot")
 
 	seq := wallet.GetAndIncrementSeq()
@@ -222,7 +250,7 @@ func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 		Sequence:      seq,
 	}
 
-	sigV2, err := clienttx.SignWithPrivKey(
+	sigV2, err = clienttx.SignWithPrivKey(
 		signing.SignMode_SIGN_MODE_DIRECT,
 		signerData,
 		txBuilder,
