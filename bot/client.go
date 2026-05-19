@@ -159,7 +159,7 @@ func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 		msg = &exchangetypes.MsgCreateSpotLimitOrder{
 			Sender:       wallet.Address,
 			SubaccountId: wallet.SubaccountID,
-			MarketId:     "market_2",
+			MarketId:     "market_1",
 			Price:        price,
 			Quantity:     quantity,
 			IsBuy:        c.rng.Intn(2) == 0,

@@ -8,9 +8,9 @@ import (
 	"os"
 	"strconv"
 	"time"
-)
 
-const rpcEndpoint = "https://uniocean-tps.zeeve.net/cosmos"
+	"code.zeeve.net/client-projects/cronos-whitelabelling/internal/networkconfig"
+)
 
 // Tendermint RPC response types
 
@@ -28,7 +28,7 @@ type blockResponse struct {
 	} `json:"result"`
 }
 
-func getBlock(height int64) (*blockResponse, error) {
+func getBlock(rpcEndpoint string, height int64) (*blockResponse, error) {
 	var url string
 	if height == 0 {
 		url = rpcEndpoint + "/block"
@@ -55,6 +55,8 @@ func getBlock(height int64) (*blockResponse, error) {
 }
 
 func main() {
+	networkCfg := networkconfig.Load()
+
 	// Duration to observe (default 60s, override via arg)
 	observeSecs := 60
 	if len(os.Args) > 1 {
@@ -64,11 +66,11 @@ func main() {
 	}
 
 	fmt.Printf("🔍 Uniocean On-Chain TPS Checker\n")
-	fmt.Printf("   RPC: %s\n", rpcEndpoint)
+	fmt.Printf("   RPC: %s\n", networkCfg.RPCEndpoint)
 	fmt.Printf("   Observation window: %ds\n\n", observeSecs)
 
 	// Snapshot start block
-	startBlock, err := getBlock(0)
+	startBlock, err := getBlock(networkCfg.RPCEndpoint, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Failed to fetch start block: %v\n", err)
 		os.Exit(1)
@@ -91,7 +93,7 @@ func main() {
 		select {
 		case <-ticker.C:
 			elapsed++
-			latest, err := getBlock(0)
+			latest, err := getBlock(networkCfg.RPCEndpoint, 0)
 			if err != nil {
 				fmt.Printf("[%3ds] ⚠️  RPC error: %v\n", elapsed, err)
 				continue
@@ -107,7 +109,7 @@ func main() {
 			var newTxs int64
 			var newBlocks int64
 			for h := lastHeight + 1; h <= latestHeight; h++ {
-				b, err := getBlock(h)
+				b, err := getBlock(networkCfg.RPCEndpoint, h)
 				if err != nil {
 					fmt.Printf("[%3ds] ⚠️  Failed to fetch block #%d: %v\n", elapsed, h, err)
 					continue
@@ -130,7 +132,7 @@ func main() {
 		case <-deadline:
 			ticker.Stop()
 
-			endBlock, _ := getBlock(0)
+			endBlock, _ := getBlock(networkCfg.RPCEndpoint, 0)
 			endHeight, _ := strconv.ParseInt(endBlock.Result.Block.Header.Height, 10, 64)
 			endTime, _ := time.Parse(time.RFC3339Nano, endBlock.Result.Block.Header.Time)
 

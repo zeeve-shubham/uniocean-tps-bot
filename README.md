@@ -311,6 +311,15 @@ Open **two terminals simultaneously**:
   --endpoints wss://uniocean-tps.zeeve.net/websocket
 ```
 
+For new server it is 
+
+```bash
+./uniocean-load-tester funded-new.log \
+  -c 1 -T 60 -r 500 \
+  --broadcast-tx-method async \
+  --endpoints ws://134.119.179.234:26657/websocket
+```
+
 **Terminal 2 — TPS Checker (same duration):**
 ```bash
 go run ./tps-checker/main.go 60

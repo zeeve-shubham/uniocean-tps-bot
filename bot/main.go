@@ -22,14 +22,14 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 
+	"code.zeeve.net/client-projects/cronos-whitelabelling/internal/networkconfig"
 	exchangetypes "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types"
 	"github.com/informalsystems/tm-load-test/pkg/loadtest"
 )
 
-const defaultRESTEndpoint = "https://uniocean-tps.zeeve.net/api"
-const defaultChainID = "uniocean_684-1"
-
 func main() {
+	networkCfg := networkconfig.Load()
+
 	// Configure Cosmos SDK types
 	config := sdk.GetConfig()
 	config.SetBech32PrefixForAccount("oceanx", "oceanxpub")
@@ -38,19 +38,19 @@ func main() {
 	// Parse arguments for mnemonic file
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: uniocean-load-tester <mnemonics_file> [tm-load-test args...]")
-		fmt.Println("Example: ./uniocean-load-tester funded-wallets.log -c 1 -T 30 -r 100 --broadcast-tx-method async --endpoints wss://uniocean-tps.zeeve.net/websocket")
+		fmt.Printf("Example: ./uniocean-load-tester funded-wallets.log -c 1 -T 30 -r 100 --broadcast-tx-method async --endpoints %s\n", networkCfg.WebSocketEndpoint)
 		fmt.Println("Debug: ./uniocean-load-tester funded-wallets.log --debug-sync-broadcast")
 		os.Exit(1)
 	}
 
 	mnemonicFile := os.Args[1]
-	chainID := defaultChainID
+	chainID := networkCfg.ChainID
 	debugSyncBroadcast, remainingArgs := extractCustomArgs(os.Args[2:])
 
 	// Adjust os.Args for tm-load-test
 	os.Args = append([]string{os.Args[0]}, remainingArgs...)
 
-	wallets, err := loadWallets(mnemonicFile, defaultRESTEndpoint)
+	wallets, err := loadWallets(mnemonicFile, networkCfg.RESTEndpoint)
 	if err != nil {
 		panic(fmt.Sprintf("failed to load wallets: %v", err))
 	}
@@ -61,7 +61,7 @@ func main() {
 	factory := newClientFactory(wallets, chainID)
 
 	if debugSyncBroadcast {
-		if err := runDebugSyncBroadcast(factory, defaultRESTEndpoint); err != nil {
+		if err := runDebugSyncBroadcast(factory, networkCfg.RESTEndpoint); err != nil {
 			panic(err)
 		}
 		return
