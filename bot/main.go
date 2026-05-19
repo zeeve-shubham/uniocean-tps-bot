@@ -8,14 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	authtypes "github.com/cosmos/cosmos-sdk/x/auth/types"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 	"github.com/cosmos/go-bip39"
 
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -28,6 +31,14 @@ import (
 
 const defaultRESTEndpoint = "https://uniocean-tps.zeeve.net/api"
 const defaultChainID = "uniocean_684-1"
+
+func envOrDefault(key, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+	return value
+}
 
 func main() {
 	// Configure Cosmos SDK types
@@ -44,13 +55,16 @@ func main() {
 	}
 
 	mnemonicFile := os.Args[1]
-	chainID := defaultChainID
+	chainID := envOrDefault("UNIOCEAN_CHAIN_ID", defaultChainID)
+	restEndpoint := envOrDefault("UNIOCEAN_REST_ENDPOINT", defaultRESTEndpoint)
 	debugSyncBroadcast, remainingArgs := extractCustomArgs(os.Args[2:])
+	wsEndpoint := extractWSEndpoint(remainingArgs)
 
 	// Adjust os.Args for tm-load-test
 	os.Args = append([]string{os.Args[0]}, remainingArgs...)
+	reportStartupConfig(chainID, restEndpoint, wsEndpoint)
 
-	wallets, err := loadWallets(mnemonicFile, defaultRESTEndpoint)
+	wallets, err := loadWallets(mnemonicFile, restEndpoint)
 	if err != nil {
 		panic(fmt.Sprintf("failed to load wallets: %v", err))
 	}
@@ -61,7 +75,7 @@ func main() {
 	factory := newClientFactory(wallets, chainID)
 
 	if debugSyncBroadcast {
-		if err := runDebugSyncBroadcast(factory, defaultRESTEndpoint); err != nil {
+		if err := runDebugSyncBroadcast(factory, restEndpoint); err != nil {
 			panic(err)
 		}
 		return
@@ -74,6 +88,163 @@ func main() {
 		AppLongDesc:          "Tool to spam Uniocean Network with Exchange transactions",
 		DefaultClientFactory: "uniocean",
 	})
+}
+
+func extractWSEndpoint(args []string) string {
+	for i, arg := range args {
+		if strings.HasPrefix(arg, "--endpoints=") {
+			return strings.TrimSpace(strings.TrimPrefix(arg, "--endpoints="))
+		}
+		if arg == "--endpoints" && i+1 < len(args) {
+			return strings.TrimSpace(args[i+1])
+		}
+	}
+	return ""
+}
+
+func reportStartupConfig(chainID, restEndpoint, wsEndpoint string) {
+	txTypes, err := activeTxTypesFromEnv()
+	if err != nil {
+		fmt.Printf("[ERROR] Invalid UNIOCEAN_TX_TYPES: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("[INFO] ChainID: %s\n", chainID)
+	fmt.Printf("[INFO] REST endpoint: %s\n", restEndpoint)
+	if wsEndpoint != "" {
+		fmt.Printf("[INFO] WS endpoint: %s\n", wsEndpoint)
+	}
+	fmt.Printf("[INFO] Active tx types: %v\n", txTypes)
+
+	restHeight, restErr := fetchRESTLatestHeight(restEndpoint)
+	if restErr != nil {
+		fmt.Printf("[WARN] REST latest block check failed: %v\n", restErr)
+	} else {
+		fmt.Printf("[INFO] REST latest height: %s\n", restHeight)
+	}
+
+	if wsEndpoint != "" {
+		rpcURL, convErr := statusURLFromWSEndpoint(wsEndpoint)
+		if convErr != nil {
+			fmt.Printf("[WARN] Could not derive RPC status URL from --endpoints: %v\n", convErr)
+		} else {
+			network, height, rpcErr := fetchRPCStatus(rpcURL)
+			if rpcErr != nil {
+				fmt.Printf("[WARN] RPC status check failed (%s): %v\n", rpcURL, rpcErr)
+			} else {
+				fmt.Printf("[INFO] RPC network: %s | latest height: %s\n", network, height)
+				if network != "" && network != chainID {
+					fmt.Printf("[WARN] Chain mismatch: expected %s but RPC reports %s\n", chainID, network)
+				}
+			}
+		}
+	}
+
+	if hasExchangeTxType(txTypes) {
+		fmt.Println("[WARN] Exchange tx types selected. Ensure market IDs exist on this endpoint, otherwise txs can fail with 'market not found'.")
+	}
+}
+
+func hasExchangeTxType(txTypes []int) bool {
+	for _, t := range txTypes {
+		if t != 4 {
+			return true
+		}
+	}
+	return false
+}
+
+func fetchRESTLatestHeight(restEndpoint string) (string, error) {
+	url := strings.TrimRight(restEndpoint, "/") + "/cosmos/base/tendermint/v1beta1/blocks/latest"
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("http %d", resp.StatusCode)
+	}
+
+	var data struct {
+		Block struct {
+			Header struct {
+				Height string `json:"height"`
+			} `json:"header"`
+		} `json:"block"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", err
+	}
+
+	if data.Block.Header.Height == "" {
+		return "", fmt.Errorf("missing height in response")
+	}
+
+	return data.Block.Header.Height, nil
+}
+
+func statusURLFromWSEndpoint(wsEndpoint string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(wsEndpoint))
+	if err != nil {
+		return "", err
+	}
+
+	switch parsed.Scheme {
+	case "ws":
+		parsed.Scheme = "http"
+	case "wss":
+		parsed.Scheme = "https"
+	case "http", "https":
+		// already normalized
+	default:
+		return "", fmt.Errorf("unsupported endpoint scheme %q", parsed.Scheme)
+	}
+
+	basePath := strings.TrimSuffix(parsed.Path, "/websocket")
+	basePath = strings.TrimRight(basePath, "/")
+	if basePath == "" {
+		parsed.Path = "/status"
+	} else {
+		parsed.Path = basePath + "/status"
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+
+	return parsed.String(), nil
+}
+
+func fetchRPCStatus(statusURL string) (string, string, error) {
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(statusURL)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return "", "", fmt.Errorf("http %d", resp.StatusCode)
+	}
+
+	var data struct {
+		Result struct {
+			NodeInfo struct {
+				Network string `json:"network"`
+			} `json:"node_info"`
+			SyncInfo struct {
+				LatestBlockHeight string `json:"latest_block_height"`
+			} `json:"sync_info"`
+		} `json:"result"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", "", err
+	}
+
+	return data.Result.NodeInfo.Network, data.Result.SyncInfo.LatestBlockHeight, nil
 }
 
 func extractCustomArgs(args []string) (bool, []string) {
@@ -99,6 +270,7 @@ func newClientFactory(wallets []*Wallet, chainID string) *UnioceanClientFactory 
 		&exchangetypes.MsgCreateSpotLimitOrder{},
 		&exchangetypes.MsgCreateDerivativeLimitOrder{},
 		&exchangetypes.MsgCreateBinaryOptionsLimitOrder{},
+		&banktypes.MsgSend{},
 	)
 	protoCodec := codec.NewProtoCodec(interfaceRegistry)
 	txConfig := authtx.NewTxConfig(protoCodec, authtx.DefaultSignModes)
@@ -187,6 +359,7 @@ func loadWallets(mnemonicFile, restEndpoint string) ([]*Wallet, error) {
 		})
 	}
 
+	fmt.Printf("[INFO] Loaded %d wallets\n", len(wallets))
 	return wallets, nil
 }
 

@@ -16,6 +16,27 @@ The bot connects to the Uniocean Tendermint WebSocket RPC, loads up to 50 wallet
 - `MsgCreateSpotLimitOrder` — Create a spot market limit order
 - `MsgCreateDerivativeLimitOrder` — Create a derivative market limit order
 - `MsgCreateBinaryOptionsLimitOrder` — Create a binary options limit order
+- `bank.MsgSend` — Small bank transfer for low-byte transaction TPS tests
+
+**Transaction type selector (`UNIOCEAN_TX_TYPES`):**
+- `0` = `MsgDeposit`
+- `1` = `MsgCreateSpotLimitOrder`
+- `2` = `MsgCreateDerivativeLimitOrder`
+- `3` = `MsgCreateBinaryOptionsLimitOrder`
+- `4` = `bank.MsgSend`
+
+Examples:
+```bash
+# Bank-only TPS test (smallest payload among supported msgs)
+UNIOCEAN_TX_TYPES=4 ./uniocean-load-tester funded-wallets.log \
+  -c 1 -T 60 -r 500 --broadcast-tx-method async \
+  --endpoints wss://uniocean-tps.zeeve.net/websocket
+
+# Mixed load including bank and exchange txs
+UNIOCEAN_TX_TYPES=0,1,3,4 ./uniocean-load-tester funded-wallets.log \
+  -c 1 -T 60 -r 500 --broadcast-tx-method async \
+  --endpoints wss://uniocean-tps.zeeve.net/websocket
+```
 
 ---
 

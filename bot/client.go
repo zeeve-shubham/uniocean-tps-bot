@@ -18,6 +18,7 @@ import (
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
 	authsigning "github.com/cosmos/cosmos-sdk/x/auth/signing"
+	banktypes "github.com/cosmos/cosmos-sdk/x/bank/types"
 
 	exchangetypes "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types"
 	"github.com/informalsystems/tm-load-test/pkg/loadtest"
@@ -96,7 +97,8 @@ func (f *UnioceanClientFactory) NewClient(cfg loadtest.Config) (loadtest.Client,
 func activeTxTypesFromEnv() ([]int, error) {
 	raw := strings.TrimSpace(os.Getenv("UNIOCEAN_TX_TYPES"))
 	if raw == "" {
-		return []int{0, 1, 3}, nil
+		// Default to bank sends for cross-network compatibility.
+		return []int{4}, nil
 	}
 
 	parts := strings.Split(raw, ",")
@@ -114,13 +116,20 @@ func activeTxTypesFromEnv() ([]int, error) {
 	return active, nil
 }
 
+func txMemoFromEnv() string {
+	if memo, ok := os.LookupEnv("UNIOCEAN_TX_MEMO"); ok {
+		return memo
+	}
+	return "uniocean-tps-bot"
+}
+
 func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 	// 1. Pick a random wallet
 	wallet := c.factory.Wallets[c.rng.Intn(len(c.factory.Wallets))]
 
 	// 2. Randomly select transaction type
 	// Active by default: Deposit (0), SpotLimitOrder (1), BinaryOptionsLimitOrder (3)
-	// Override for debugging with UNIOCEAN_TX_TYPES, e.g. "0" or "1,3".
+	// Override with UNIOCEAN_TX_TYPES, e.g. "4" (bank only) or "0,1,3,4".
 	activeTxTypes, err := activeTxTypesFromEnv()
 	if err != nil {
 		return nil, err
@@ -215,6 +224,30 @@ func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 			IsReduceOnly: false,
 			IsPostOnly:   false,
 		}
+
+	case 4:
+		// MsgSend (bank module) for lower-byte transfer testing.
+		toAddr := wallet.Address
+		if len(c.factory.Wallets) > 1 {
+			for {
+				candidate := c.factory.Wallets[c.rng.Intn(len(c.factory.Wallets))].Address
+				if candidate != wallet.Address {
+					toAddr = candidate
+					break
+				}
+			}
+		}
+
+		msg = &banktypes.MsgSend{
+			FromAddress: wallet.Address,
+			ToAddress:   toAddr,
+			Amount: sdk.NewCoins(
+				sdk.NewCoin("oceanx", sdk.NewInt(1)),
+			),
+		}
+
+	default:
+		return nil, fmt.Errorf("unsupported tx type %d (valid: 0,1,2,3,4)", txType)
 	}
 
 	// 3. Build and Sign Transaction
@@ -223,11 +256,22 @@ func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 		return nil, err
 	}
 
-	txBuilder.SetGasLimit(300000)
-	// Fee: Provide enough to cover minimum global fee (30,000,000,000,000 oceanx base units)
-	// We'll set 50,000,000,000,000 just to be safe.
-	txBuilder.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("oceanx", sdk.NewInt(50_000_000_000_000))))
-	txBuilder.SetMemo("uniocean-tps-bot")
+	gasLimit := uint64(300000)
+	if gasEnv := os.Getenv("UNIOCEAN_GAS_LIMIT"); gasEnv != "" {
+		if g, err := strconv.ParseUint(gasEnv, 10, 64); err == nil {
+			gasLimit = g
+		}
+	}
+	txBuilder.SetGasLimit(gasLimit)
+
+	feeAmount := sdk.NewInt(50_000_000_000_000)
+	if feeEnv := os.Getenv("UNIOCEAN_FEE_AMOUNT"); feeEnv != "" {
+		if f, ok := sdk.NewIntFromString(feeEnv); ok {
+			feeAmount = f
+		}
+	}
+	txBuilder.SetFeeAmount(sdk.NewCoins(sdk.NewCoin("oceanx", feeAmount)))
+	txBuilder.SetMemo(txMemoFromEnv())
 
 	seq := wallet.GetAndIncrementSeq()
 
@@ -270,6 +314,11 @@ func (c *UnioceanClient) GenerateTx() ([]byte, error) {
 	txBytes, err := c.factory.TxConfig.TxEncoder()(txBuilder.GetTx())
 	if err != nil {
 		return nil, err
+	}
+
+	// Debug: Log tx byte size if env is set
+	if os.Getenv("UNIOCEAN_LOG_TX_SIZE") != "" {
+		fmt.Fprintf(os.Stderr, "[DEBUG] tx_bytes=%d msg_type=%T\n", len(txBytes), msg)
 	}
 
 	return txBytes, nil
