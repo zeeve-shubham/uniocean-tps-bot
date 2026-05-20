@@ -1,156 +1,338 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
 	"strconv"
+	"strings"
+	"syscall"
 	"time"
+
+	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
+	coretypes "github.com/cometbft/cometbft/rpc/core/types"
+	cmttypes "github.com/cometbft/cometbft/types"
 
 	"code.zeeve.net/client-projects/cronos-whitelabelling/internal/networkconfig"
 )
 
-// Tendermint RPC response types
+const (
+	defaultObserveSeconds = 60
+	newBlockQuery         = "tm.event='NewBlock'"
+	idleLogInterval       = 5 * time.Second
+	rpcCallTimeout        = 5 * time.Second
+)
 
-type blockResponse struct {
-	Result struct {
-		Block struct {
-			Header struct {
-				Height string `json:"height"`
-				Time   string `json:"time"`
-			} `json:"header"`
-			Data struct {
-				Txs []string `json:"txs"` // base64-encoded txs; length = tx count
-			} `json:"data"`
-		} `json:"block"`
-	} `json:"result"`
-}
-
-func getBlock(rpcEndpoint string, height int64) (*blockResponse, error) {
-	var url string
-	if height == 0 {
-		url = rpcEndpoint + "/block"
-	} else {
-		url = fmt.Sprintf("%s/block?height=%d", rpcEndpoint, height)
-	}
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result blockResponse
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-	return &result, nil
+type observedBlock struct {
+	height  int64
+	time    time.Time
+	txCount int
 }
 
 func main() {
 	networkCfg := networkconfig.Load()
-
-	// Duration to observe (default 60s, override via arg)
-	observeSecs := 60
-	if len(os.Args) > 1 {
-		if n, err := strconv.Atoi(os.Args[1]); err == nil {
-			observeSecs = n
-		}
+	observeSecs := parseObserveSeconds(os.Args[1:])
+	rpcRemote, err := rpcRemoteFromWSEndpoint(networkCfg.WebSocketEndpoint)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to normalize WebSocket endpoint: %v\n", err)
+		os.Exit(1)
 	}
 
 	fmt.Printf("🔍 Uniocean On-Chain TPS Checker\n")
-	fmt.Printf("   RPC: %s\n", networkCfg.RPCEndpoint)
+	fmt.Printf("   RPC: %s\n", rpcRemote)
+	fmt.Printf("   WS:  %s\n", networkCfg.WebSocketEndpoint)
 	fmt.Printf("   Observation window: %ds\n\n", observeSecs)
 
-	// Snapshot start block
-	startBlock, err := getBlock(networkCfg.RPCEndpoint, 0)
+	client, err := newCometClient(networkCfg.WebSocketEndpoint)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to create CometBFT client: %v\n", err)
+		os.Exit(1)
+	}
+	if err := client.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to start CometBFT client: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = client.Stop() }()
+
+	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
+	subscriberID := fmt.Sprintf("uniocean-tps-checker-%d", time.Now().UnixNano())
+	events, err := client.Subscribe(ctx, subscriberID, newBlockQuery)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "❌ Failed to subscribe to new blocks: %v\n", err)
+		os.Exit(1)
+	}
+	defer func() { _ = client.UnsubscribeAll(context.Background(), subscriberID) }()
+
+	startBlock, err := currentBlock(ctx, client)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Failed to fetch start block: %v\n", err)
 		os.Exit(1)
 	}
 
-	startHeight, _ := strconv.ParseInt(startBlock.Result.Block.Header.Height, 10, 64)
-	startTime, _ := time.Parse(time.RFC3339Nano, startBlock.Result.Block.Header.Time)
-	fmt.Printf("📦 Start block: #%d at %s\n", startHeight, startTime.Format("15:04:05"))
+	fmt.Printf("📦 Start block: #%d at %s\n", startBlock.height, startBlock.time.Format("15:04:05"))
 
-	// Tick every second and print live stats
-	ticker := time.NewTicker(1 * time.Second)
-	deadline := time.After(time.Duration(observeSecs) * time.Second)
+	deadline := time.NewTimer(time.Duration(observeSecs) * time.Second)
+	defer deadline.Stop()
 
-	var lastHeight int64 = startHeight
+	idleTicker := time.NewTicker(idleLogInterval)
+	defer idleTicker.Stop()
+
+	lastObserved := startBlock
+	lastWallEventAt := time.Now()
 	var totalTxs int64
 	var totalBlocks int64
-	elapsed := 0
 
 	for {
 		select {
-		case <-ticker.C:
-			elapsed++
-			latest, err := getBlock(networkCfg.RPCEndpoint, 0)
-			if err != nil {
-				fmt.Printf("[%3ds] ⚠️  RPC error: %v\n", elapsed, err)
-				continue
-			}
-
-			latestHeight, _ := strconv.ParseInt(latest.Result.Block.Header.Height, 10, 64)
-			if latestHeight <= lastHeight {
-				fmt.Printf("[%3ds] ⏳ No new block yet (still at #%d)\n", elapsed, latestHeight)
-				continue
-			}
-
-			// Count txs in all new blocks since last check
-			var newTxs int64
-			var newBlocks int64
-			for h := lastHeight + 1; h <= latestHeight; h++ {
-				b, err := getBlock(networkCfg.RPCEndpoint, h)
-				if err != nil {
-					fmt.Printf("[%3ds] ⚠️  Failed to fetch block #%d: %v\n", elapsed, h, err)
-					continue
-				}
-				txCount := int64(len(b.Result.Block.Data.Txs))
-				newTxs += txCount
-				newBlocks++
-				fmt.Printf("[%3ds] 📦 Block #%d: %d txs\n", elapsed, h, txCount)
-			}
-
-			totalTxs += newTxs
-			totalBlocks += newBlocks
-			lastHeight = latestHeight
-
-			// Live TPS: txs in this interval / seconds elapsed so far
-			liveTPS := float64(totalTxs) / float64(elapsed)
-			fmt.Printf("[%3ds] 📊 Running total: %d txs across %d blocks | Avg TPS: %.2f\n\n",
-				elapsed, totalTxs, totalBlocks, liveTPS)
-
-		case <-deadline:
-			ticker.Stop()
-
-			endBlock, _ := getBlock(networkCfg.RPCEndpoint, 0)
-			endHeight, _ := strconv.ParseInt(endBlock.Result.Block.Header.Height, 10, 64)
-			endTime, _ := time.Parse(time.RFC3339Nano, endBlock.Result.Block.Header.Time)
-
-			actualDuration := endTime.Sub(startTime).Seconds()
-			if actualDuration <= 0 {
-				actualDuration = float64(observeSecs)
-			}
-
-			fmt.Println("═══════════════════════════════════════")
-			fmt.Printf("✅ TPS Measurement Complete\n")
-			fmt.Printf("   Blocks observed: #%d → #%d (%d blocks)\n", startHeight, endHeight, totalBlocks)
-			fmt.Printf("   Wall time:        %ds\n", observeSecs)
-			fmt.Printf("   Chain time:       %.1fs\n", actualDuration)
-			fmt.Printf("   Total txs:        %d\n", totalTxs)
-			fmt.Printf("   ──────────────────────────────────\n")
-			fmt.Printf("   🚀 On-chain TPS: %.2f tx/s\n", float64(totalTxs)/actualDuration)
-			fmt.Println("═══════════════════════════════════════")
+		case <-ctx.Done():
+			catchUpMissingBlocks(ctx, client, startBlock, &lastObserved, &totalBlocks, &totalTxs)
+			printSummary(ctx, client, observeSecs, startBlock, lastObserved, totalBlocks, totalTxs)
 			return
+
+		case <-deadline.C:
+			catchUpMissingBlocks(ctx, client, startBlock, &lastObserved, &totalBlocks, &totalTxs)
+			printSummary(ctx, client, observeSecs, startBlock, lastObserved, totalBlocks, totalTxs)
+			return
+
+		case event := <-events:
+			block, ok := blockFromEvent(event)
+			if !ok || block.height <= lastObserved.height {
+				continue
+			}
+
+			lastWallEventAt = time.Now()
+			recordObservedBlock(startBlock, block, &lastObserved, &totalBlocks, &totalTxs, "")
+
+		case <-idleTicker.C:
+			if catchUpMissingBlocks(ctx, client, startBlock, &lastObserved, &totalBlocks, &totalTxs) {
+				lastWallEventAt = time.Now()
+				continue
+			}
+			if time.Since(lastWallEventAt) >= idleLogInterval {
+				fmt.Printf("⏳ Waiting for next block... latest observed #%d\n", lastObserved.height)
+			}
 		}
 	}
+}
+
+func parseObserveSeconds(args []string) int {
+	if len(args) == 0 {
+		return defaultObserveSeconds
+	}
+
+	observeSecs, err := strconv.Atoi(args[0])
+	if err != nil || observeSecs <= 0 {
+		return defaultObserveSeconds
+	}
+	return observeSecs
+}
+
+func newCometClient(wsEndpoint string) (*rpchttp.HTTP, error) {
+	remote, wsPath, err := rpcRemoteAndWSPathFromEndpoint(wsEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	return rpchttp.New(remote, wsPath)
+}
+
+func rpcRemoteFromWSEndpoint(wsEndpoint string) (string, error) {
+	remote, _, err := rpcRemoteAndWSPathFromEndpoint(wsEndpoint)
+	return remote, err
+}
+
+func rpcRemoteAndWSPathFromEndpoint(wsEndpoint string) (string, string, error) {
+	parsedURL, err := url.Parse(strings.TrimSpace(wsEndpoint))
+	if err != nil {
+		return "", "", err
+	}
+	if parsedURL.Scheme == "" || parsedURL.Host == "" {
+		return "", "", fmt.Errorf("invalid websocket endpoint %q", wsEndpoint)
+	}
+
+	wsPath := parsedURL.EscapedPath()
+	if wsPath == "" {
+		wsPath = "/websocket"
+	}
+
+	switch parsedURL.Scheme {
+	case "ws":
+		parsedURL.Scheme = "http"
+	case "wss":
+		parsedURL.Scheme = "https"
+	case "http", "https":
+		// already normalized
+	default:
+		return "", "", fmt.Errorf("unsupported websocket scheme %q", parsedURL.Scheme)
+	}
+
+	parsedURL.Path = strings.TrimSuffix(parsedURL.Path, "/websocket")
+	parsedURL.RawQuery = ""
+	parsedURL.Fragment = ""
+
+	remote := strings.TrimRight(parsedURL.String(), "/")
+	return remote, wsPath, nil
+}
+
+func currentBlock(ctx context.Context, client *rpchttp.HTTP) (observedBlock, error) {
+	callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
+	defer cancel()
+
+	result, err := client.Block(callCtx, nil)
+	if err != nil {
+		return observedBlock{}, err
+	}
+	return observedBlock{
+		height:  result.Block.Height,
+		time:    result.Block.Time,
+		txCount: len(result.Block.Data.Txs),
+	}, nil
+}
+
+func blockAtHeight(ctx context.Context, client *rpchttp.HTTP, height int64) (observedBlock, error) {
+	callCtx, cancel := context.WithTimeout(ctx, rpcCallTimeout)
+	defer cancel()
+
+	result, err := client.Block(callCtx, &height)
+	if err != nil {
+		return observedBlock{}, err
+	}
+	return observedBlock{
+		height:  result.Block.Height,
+		time:    result.Block.Time,
+		txCount: len(result.Block.Data.Txs),
+	}, nil
+}
+
+func catchUpMissingBlocks(
+	ctx context.Context,
+	client *rpchttp.HTTP,
+	startBlock observedBlock,
+	lastObserved *observedBlock,
+	totalBlocks, totalTxs *int64,
+) bool {
+	latestBlock, err := currentBlock(ctx, client)
+	if err != nil {
+		return false
+	}
+
+	latestHeight := latestBlock.height
+	if latestHeight <= lastObserved.height {
+		return false
+	}
+
+	caughtUp := false
+	for height := lastObserved.height + 1; height <= latestHeight; height++ {
+		block, err := blockAtHeight(ctx, client, height)
+		if err != nil {
+			break
+		}
+		recordObservedBlock(startBlock, block, lastObserved, totalBlocks, totalTxs, " [rpc catch-up]")
+		caughtUp = true
+	}
+
+	return caughtUp
+}
+
+func recordObservedBlock(
+	startBlock, block observedBlock,
+	lastObserved *observedBlock,
+	totalBlocks, totalTxs *int64,
+	suffix string,
+) {
+	*totalBlocks += 1
+	*totalTxs += int64(block.txCount)
+
+	blockInterval := block.time.Sub(lastObserved.time).Seconds()
+	blockTPS := 0.0
+	if blockInterval > 0 {
+		blockTPS = float64(block.txCount) / blockInterval
+	}
+
+	rollingDuration := block.time.Sub(startBlock.time).Seconds()
+	rollingTPS := 0.0
+	if rollingDuration > 0 {
+		rollingTPS = float64(*totalTxs) / rollingDuration
+	}
+
+	fmt.Printf(
+		"📦 Block #%d: %d txs | Δt: %.3fs | Block TPS: %.2f | Avg TPS: %.2f%s\n",
+		block.height,
+		block.txCount,
+		maxFloat(blockInterval, 0),
+		blockTPS,
+		rollingTPS,
+		suffix,
+	)
+
+	*lastObserved = block
+}
+
+func blockFromEvent(event coretypes.ResultEvent) (observedBlock, bool) {
+	switch data := event.Data.(type) {
+	case cmttypes.EventDataNewBlock:
+		if data.Block == nil {
+			return observedBlock{}, false
+		}
+		return observedBlock{
+			height:  data.Block.Height,
+			time:    data.Block.Time,
+			txCount: len(data.Block.Data.Txs),
+		}, true
+	case *cmttypes.EventDataNewBlock:
+		if data == nil || data.Block == nil {
+			return observedBlock{}, false
+		}
+		return observedBlock{
+			height:  data.Block.Height,
+			time:    data.Block.Time,
+			txCount: len(data.Block.Data.Txs),
+		}, true
+	default:
+		return observedBlock{}, false
+	}
+}
+
+func printSummary(
+	ctx context.Context,
+	client *rpchttp.HTTP,
+	observeSecs int,
+	startBlock observedBlock,
+	lastObserved observedBlock,
+	totalBlocks, totalTxs int64,
+) {
+	endBlock := lastObserved
+	if latest, err := currentBlock(ctx, client); err == nil && latest.height >= endBlock.height {
+		endBlock = latest
+	}
+
+	actualDuration := endBlock.time.Sub(startBlock.time).Seconds()
+	if actualDuration <= 0 {
+		actualDuration = float64(observeSecs)
+	}
+
+	onChainTPS := 0.0
+	if actualDuration > 0 {
+		onChainTPS = float64(totalTxs) / actualDuration
+	}
+
+	fmt.Println("═══════════════════════════════════════")
+	fmt.Printf("✅ TPS Measurement Complete\n")
+	fmt.Printf("   Blocks observed: #%d → #%d (%d blocks)\n", startBlock.height, endBlock.height, totalBlocks)
+	fmt.Printf("   Wall time:        %ds\n", observeSecs)
+	fmt.Printf("   Chain time:       %.1fs\n", actualDuration)
+	fmt.Printf("   Total txs:        %d\n", totalTxs)
+	fmt.Printf("   ──────────────────────────────────\n")
+	fmt.Printf("   🚀 On-chain TPS: %.2f tx/s\n", onChainTPS)
+	fmt.Println("═══════════════════════════════════════")
+}
+
+func maxFloat(value, fallback float64) float64 {
+	if value > 0 {
+		return value
+	}
+	return fallback
 }

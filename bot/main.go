@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -25,8 +25,11 @@ import (
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	authtx "github.com/cosmos/cosmos-sdk/x/auth/tx"
 
+	"code.zeeve.net/client-projects/cronos-whitelabelling/internal/networkconfig"
 	exchangetypes "code.zeeve.net/client-projects/cronos-whitelabelling/x/exchange/types"
 	"github.com/informalsystems/tm-load-test/pkg/loadtest"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 const defaultRESTEndpoint = "http://134.119.179.234:1317"
@@ -57,14 +60,16 @@ func main() {
 	mnemonicFile := os.Args[1]
 	chainID := envOrDefault("UNIOCEAN_CHAIN_ID", defaultChainID)
 	restEndpoint := envOrDefault("UNIOCEAN_REST_ENDPOINT", defaultRESTEndpoint)
+	grpcEndpoint := networkconfig.Load().GRPCEndpoint
 	debugSyncBroadcast, remainingArgs := extractCustomArgs(os.Args[2:])
 	wsEndpoint := extractWSEndpoint(remainingArgs)
+	broadcastMethod := extractBroadcastMethod(remainingArgs)
 
 	// Adjust os.Args for tm-load-test
 	os.Args = append([]string{os.Args[0]}, remainingArgs...)
-	reportStartupConfig(chainID, restEndpoint, wsEndpoint)
+	reportStartupConfig(chainID, restEndpoint, grpcEndpoint, wsEndpoint, broadcastMethod)
 
-	wallets, err := loadWallets(mnemonicFile, restEndpoint)
+	wallets, err := loadWallets(mnemonicFile, grpcEndpoint)
 	if err != nil {
 		panic(fmt.Sprintf("failed to load wallets: %v", err))
 	}
@@ -105,18 +110,30 @@ func extractCustomArgs(args []string) (bool, []string) {
 }
 
 func extractWSEndpoint(args []string) string {
+	return extractFlagValue(args, "--endpoints")
+}
+
+func extractBroadcastMethod(args []string) string {
+	method := extractFlagValue(args, "--broadcast-tx-method")
+	if method == "" {
+		return "async"
+	}
+	return method
+}
+
+func extractFlagValue(args []string, flagName string) string {
 	for i, arg := range args {
-		if strings.HasPrefix(arg, "--endpoints=") {
-			return strings.TrimSpace(strings.TrimPrefix(arg, "--endpoints="))
+		if strings.HasPrefix(arg, flagName+"=") {
+			return strings.TrimSpace(strings.TrimPrefix(arg, flagName+"="))
 		}
-		if arg == "--endpoints" && i+1 < len(args) {
+		if arg == flagName && i+1 < len(args) {
 			return strings.TrimSpace(args[i+1])
 		}
 	}
 	return ""
 }
 
-func reportStartupConfig(chainID, restEndpoint, wsEndpoint string) {
+func reportStartupConfig(chainID, restEndpoint, grpcEndpoint, wsEndpoint, broadcastMethod string) {
 	txTypes, err := activeTxTypesFromEnv()
 	if err != nil {
 		fmt.Printf("[ERROR] Invalid UNIOCEAN_TX_TYPES: %v\n", err)
@@ -125,10 +142,15 @@ func reportStartupConfig(chainID, restEndpoint, wsEndpoint string) {
 
 	fmt.Printf("[INFO] ChainID: %s\n", chainID)
 	fmt.Printf("[INFO] REST endpoint: %s\n", restEndpoint)
+	fmt.Printf("[INFO] gRPC endpoint: %s\n", grpcEndpoint)
+	fmt.Printf("[INFO] Broadcast method: %s\n", broadcastMethod)
 	if wsEndpoint != "" {
 		fmt.Printf("[INFO] WS endpoint: %s\n", wsEndpoint)
 	}
 	fmt.Printf("[INFO] Active tx types: %v\n", txTypes)
+	if broadcastMethod == "async" {
+		fmt.Println("[WARN] broadcast_tx_async does not wait for CheckTx or block inclusion. Use sync for validation and the TPS checker for committed throughput.")
+	}
 
 	restHeight, restErr := fetchRESTLatestHeight(restEndpoint)
 	if restErr != nil {
@@ -288,11 +310,19 @@ func registerClientFactory(factory *UnioceanClientFactory) {
 	}
 }
 
-func loadWallets(mnemonicFile, restEndpoint string) ([]*Wallet, error) {
+func loadWallets(mnemonicFile, grpcEndpoint string) ([]*Wallet, error) {
 	entries, err := readLines(mnemonicFile)
 	if err != nil {
 		return nil, err
 	}
+
+	conn, err := dialGRPC(grpcEndpoint)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	authQueryClient := authtypes.NewQueryClient(conn)
 
 	var wallets []*Wallet
 	for _, entry := range entries {
@@ -312,36 +342,11 @@ func loadWallets(mnemonicFile, restEndpoint string) ([]*Wallet, error) {
 
 		address := entry.Address
 
-		// Fetch account info via REST API
-		resp, err := http.Get(fmt.Sprintf("%s/cosmos/auth/v1beta1/accounts/%s", restEndpoint, address))
+		accNum, accSeq, err := queryAccountInfo(authQueryClient, address)
 		if err != nil {
-			fmt.Printf("Warning: failed to query account %s: %v\n", address, err)
+			fmt.Printf("Warning: failed to query account %s over gRPC: %v\n", address, err)
 			continue
 		}
-
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			fmt.Printf("Warning: failed to read account %s: %v\n", address, err)
-			continue
-		}
-
-		var accResp struct {
-			Account struct {
-				BaseAccount struct {
-					AccountNumber string `json:"account_number"`
-					Sequence      string `json:"sequence"`
-				} `json:"base_account"`
-			} `json:"account"`
-		}
-
-		if err := json.Unmarshal(body, &accResp); err != nil {
-			fmt.Printf("Warning: failed to unmarshal account %s: %v\n", address, err)
-			continue
-		}
-
-		accNum, _ := strconv.ParseUint(accResp.Account.BaseAccount.AccountNumber, 10, 64)
-		accSeq, _ := strconv.ParseUint(accResp.Account.BaseAccount.Sequence, 10, 64)
 
 		// Derive the subaccount ID for nonce=0 (default subaccount)
 		subaccountID, err := BuildSubaccountID(address, 0)
@@ -361,6 +366,64 @@ func loadWallets(mnemonicFile, restEndpoint string) ([]*Wallet, error) {
 
 	fmt.Printf("[INFO] Loaded %d wallets\n", len(wallets))
 	return wallets, nil
+}
+
+func dialGRPC(grpcEndpoint string) (*grpc.ClientConn, error) {
+	target := normalizeGRPCEndpoint(grpcEndpoint)
+	if target == "" {
+		return nil, fmt.Errorf("empty gRPC endpoint")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	conn, err := grpc.DialContext(
+		ctx,
+		target,
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dial gRPC endpoint %s: %w", grpcEndpoint, err)
+	}
+
+	return conn, nil
+}
+
+func normalizeGRPCEndpoint(grpcEndpoint string) string {
+	raw := strings.TrimSpace(grpcEndpoint)
+	if raw == "" {
+		return ""
+	}
+
+	if strings.Contains(raw, "://") {
+		parsed, err := url.Parse(raw)
+		if err == nil {
+			if parsed.Host != "" {
+				return parsed.Host
+			}
+			if parsed.Path != "" {
+				return parsed.Path
+			}
+		}
+	}
+
+	return raw
+}
+
+func queryAccountInfo(client authtypes.QueryClient, address string) (uint64, uint64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	resp, err := client.AccountInfo(ctx, &authtypes.QueryAccountInfoRequest{Address: address})
+	if err != nil {
+		return 0, 0, err
+	}
+	if resp == nil || resp.Info == nil {
+		return 0, 0, fmt.Errorf("empty account info response")
+	}
+
+	return resp.Info.AccountNumber, resp.Info.Sequence, nil
 }
 
 func runDebugSyncBroadcast(factory *UnioceanClientFactory, restEndpoint string) error {

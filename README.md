@@ -145,6 +145,8 @@ echo "funded-wallets.log" >> .gitignore
   --endpoints wss://uniocean-tps.zeeve.net/websocket
 ```
 
+> `async` is the fastest way to push load, but it does **not** mean the tx made it into a block. The load transport now surfaces `CheckTx` rejections from node responses during the run, and the TPS checker below measures what was actually committed.
+
 ### Flag Reference
 
 | Flag | Description | Example |
@@ -285,13 +287,13 @@ INFO[0075] Time limit reached for load testing   ctx="transactor[wss://...]"
 INFO[0075] Load test complete!                   ctx=loadtest
 ```
 
-> ⚠️ **Important:** `toSend=500` means **500 transactions were broadcast** per second, NOT that 500 txs were included in blocks. The chain may accept fewer depending on block gas limits, mempool pressure, and validator throughput. Use the **TPS Checker** below to measure what was actually committed on-chain.
+> ⚠️ **Important:** `toSend=500` means **500 transactions were broadcast** per second, NOT that 500 txs were included in blocks. The chain may accept fewer depending on block gas limits, mempool pressure, and validator throughput. During the run, watch for `CheckTx rejected transaction` or `Broadcast health` logs from the sender, and use the **TPS Checker** below to measure what was actually committed on-chain.
 
 ---
 
 ## 📊 Measuring Real On-Chain TPS
 
-The load tester only tells you how many transactions were *sent*. To find out how many were actually *included in blocks*, use the included `tps-checker` tool — it polls the Tendermint RPC, reads each block's transaction count, and calculates real on-chain TPS.
+The load tester tells you how many transactions were *sent*, and now also surfaces whether the node is rejecting them during `CheckTx`. To measure what was actually *included in blocks*, use the included `tps-checker` tool — it subscribes to new blocks over WebSocket and reports block-level tx counts as soon as they land.
 
 ### Build the TPS Checker
 
@@ -335,14 +337,12 @@ Or if already compiled:
 ```
 🔍 Uniocean On-Chain TPS Checker
    RPC: https://uniocean-tps.zeeve.net/cosmos
+   WS:  wss://uniocean-tps.zeeve.net/websocket
    Observation window: 60s
 
 📦 Start block: #382688 at 11:42:57
-[  1s] 📦 Block #382689: 312 txs
-[  1s] 📊 Running total: 312 txs across 1 blocks | Avg TPS: 312.00
-
-[  2s] 📦 Block #382690: 489 txs
-[  2s] 📊 Running total: 801 txs across 2 blocks | Avg TPS: 400.50
+📦 Block #382689: 312 txs | Δt: 1.001s | Block TPS: 311.69 | Avg TPS: 311.69
+📦 Block #382690: 489 txs | Δt: 0.998s | Block TPS: 489.98 | Avg TPS: 400.50
 ...
 ```
 
@@ -402,7 +402,8 @@ These values are currently hardcoded in `bot/main.go` and `bot/client.go`. Chang
 | `Warning: failed to query account` | Wallet not funded or wrong address prefix | Ensure all wallets have funds on-chain |
 | `No wallets loaded` | Wallet file format mismatch | Check that the file has `Mnemonic:` and `- address:` lines |
 | `connection refused` on WebSocket | Wrong endpoint or firewall | Check network connectivity and endpoint URL |
-| `account sequence mismatch` in tx errors | Stale sequence number | Restart the bot to re-fetch sequences |
+| `account sequence mismatch` in tx errors | Stale sequence number or too much pending load on the same accounts | Restart the bot to re-fetch sequences, lower the rate, or add more funded wallets |
+| `CheckTx rejected transaction` / `Broadcast health` logs | The node received the RPC call but rejected some txs before block inclusion | Inspect the rejection log, then tune fee/gas/tx type/rate until `checkTxRejected` stays near zero |
 | `out of gas` | Gas limit too low | Increase gas limit in `bot/client.go` |
 
 ---
