@@ -140,3 +140,52 @@ If `n_txs` is huge, the sender node is backed up.
 3. Run the **async load test**
 4. Run the **TPS checker** in parallel
 5. If results look wrong, run the **single transaction debug**
+
+---
+
+## Injective load testing (bank + exchange)
+
+This repo includes an additional binary: `injective-load-tester` (source in `injective-bot/`).
+
+### Build
+
+```bash
+cd injective-bot
+GOMODCACHE=/tmp/gomodcache-inj GOCACHE=/tmp/go-build-cache go build -o ../injective-load-tester .
+```
+
+### Endpoints (example)
+
+- REST (LCD): `http://134.119.179.234:11337`
+- WS: `ws://134.119.179.234:27657/websocket`
+- RPC (for checker): `http://134.119.179.234:27657`
+
+### Tx types (`INJ_TX_TYPES`)
+
+- `0` = `exchange.MsgDeposit`
+- `1` = `exchange.MsgCreateSpotLimitOrder`
+- `3` = `exchange.MsgCreateBinaryOptionsLimitOrder`
+- `4` = `bank.MsgSend`
+
+### Required env for exchange txs
+
+- `INJ_SPOT_MARKET_ID` (required for tx type `1`)
+- `INJ_BINARY_MARKET_ID` (required for tx type `3`)
+- Optional: `INJ_SUBACCOUNT_ID` (defaults to subaccount nonce `0` if empty)
+
+### Run examples
+
+```bash
+# Bank-only
+INJ_CHAIN_ID=injective-1 INJ_REST_ENDPOINT=http://134.119.179.234:11337 INJ_DENOM=inj \
+INJ_TX_TYPES=4 ./injective-load-tester funded-wallets.log \
+  -c 1 -T 60 -r 500 --broadcast-tx-method async \
+  --endpoints ws://134.119.179.234:27657/websocket
+
+# Mixed exchange + bank (set market IDs first)
+INJ_CHAIN_ID=injective-1 INJ_REST_ENDPOINT=http://134.119.179.234:11337 INJ_DENOM=inj \
+INJ_TX_TYPES=0,1,3,4 INJ_SPOT_MARKET_ID=... INJ_BINARY_MARKET_ID=... \
+./injective-load-tester funded-wallets.log \
+  -c 1 -T 60 -r 200 --broadcast-tx-method async \
+  --endpoints ws://134.119.179.234:27657/websocket
+```

@@ -1,6 +1,6 @@
 module code.zeeve.net/client-projects/cronos-whitelabelling
 
-go 1.25.9
+go 1.25.1
 
 require (
 	cosmossdk.io/math v1.5.3
@@ -145,7 +145,7 @@ require (
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
 
-replace github.com/informalsystems/tm-load-test => ./tm-load-test
+// Use upstream tm-load-test module (local replace removed).
 
 replace cosmossdk.io/api => cosmossdk.io/api v0.3.1
 
