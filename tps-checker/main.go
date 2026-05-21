@@ -34,18 +34,25 @@ type observedBlock struct {
 func main() {
 	networkCfg := networkconfig.Load()
 	observeSecs := parseObserveSeconds(os.Args[1:])
-	rpcRemote, err := rpcRemoteFromWSEndpoint(networkCfg.WebSocketEndpoint)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "❌ Failed to normalize WebSocket endpoint: %v\n", err)
-		os.Exit(1)
+	wsEndpoint := networkCfg.WebSocketEndpoint
+	rpcRemote := networkCfg.RPCEndpoint
+
+	// If the user explicitly sets UNIOCEAN_RPC_ENDPOINT but not UNIOCEAN_WS_ENDPOINT,
+	// prefer deriving WS from RPC. This avoids the common misconfiguration where the
+	// checker connects to the default WS (e.g. :26657) even though RPC was overridden
+	// (e.g. :27657 for Injective).
+	if strings.TrimSpace(os.Getenv("UNIOCEAN_WS_ENDPOINT")) == "" && strings.TrimSpace(os.Getenv("UNIOCEAN_RPC_ENDPOINT")) != "" {
+		if derivedWS, err := wsEndpointFromRPCEndpoint(rpcRemote); err == nil {
+			wsEndpoint = derivedWS
+		}
 	}
 
 	fmt.Printf("🔍 Uniocean On-Chain TPS Checker\n")
 	fmt.Printf("   RPC: %s\n", rpcRemote)
-	fmt.Printf("   WS:  %s\n", networkCfg.WebSocketEndpoint)
+	fmt.Printf("   WS:  %s\n", wsEndpoint)
 	fmt.Printf("   Observation window: %ds\n\n", observeSecs)
 
-	client, err := newCometClient(networkCfg.WebSocketEndpoint)
+	client, err := newCometClient(wsEndpoint)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "❌ Failed to create CometBFT client: %v\n", err)
 		os.Exit(1)
@@ -117,6 +124,26 @@ func main() {
 			}
 		}
 	}
+}
+
+func wsEndpointFromRPCEndpoint(rpcEndpoint string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(rpcEndpoint))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return "", fmt.Errorf("invalid rpc endpoint %q", rpcEndpoint)
+	}
+	switch parsed.Scheme {
+	case "http":
+		parsed.Scheme = "ws"
+	case "https":
+		parsed.Scheme = "wss"
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + "/websocket"
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
 func parseObserveSeconds(args []string) int {

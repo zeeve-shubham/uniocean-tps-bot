@@ -3,6 +3,7 @@ module injective-load-tester
 go 1.25.1
 
 require (
+	cosmossdk.io/math v1.3.0
 	github.com/InjectiveLabs/injective-core v1.13.3
 	github.com/cosmos/cosmos-sdk v0.50.7
 	github.com/cosmos/go-bip39 v1.0.0
@@ -16,7 +17,6 @@ require (
 	cosmossdk.io/depinject v1.0.0 // indirect
 	cosmossdk.io/errors v1.0.1 // indirect
 	cosmossdk.io/log v1.3.1 // indirect
-	cosmossdk.io/math v1.3.0 // indirect
 	cosmossdk.io/store v1.1.0 // indirect
 	cosmossdk.io/x/tx v0.13.4 // indirect
 	cosmossdk.io/x/upgrade v0.1.3 // indirect
@@ -226,6 +226,8 @@ require (
 )
 
 replace github.com/InjectiveLabs/injective-core => github.com/InjectiveFoundation/injective-core v1.13.3
+
+replace github.com/informalsystems/tm-load-test => ../tm-load-test
 
 // Mirror Injective core's module replacements so our standalone load tester
 // builds against the same Injective forks and pinned versions.

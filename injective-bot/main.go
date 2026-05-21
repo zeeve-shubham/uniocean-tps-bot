@@ -3,15 +3,20 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -87,6 +92,9 @@ func main() {
 	}
 
 	registerClientFactory(factory)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	startSeqRefresher(ctx, wallets, restEndpoint)
 	loadtest.Run(&loadtest.CLIConfig{
 		AppName:              "injective-load-tester",
 		AppShortDesc:         "Load testing tool for Injective",
@@ -134,6 +142,15 @@ type InjectiveClientFactory struct {
 	TxConfig client.TxConfig
 	Wallets  []*Wallet
 	ChainID  string
+	walletRR uint64
+}
+
+func (f *InjectiveClientFactory) NextWallet() *Wallet {
+	if len(f.Wallets) == 0 {
+		return nil
+	}
+	idx := atomic.AddUint64(&f.walletRR, 1) - 1
+	return f.Wallets[int(idx%uint64(len(f.Wallets)))]
 }
 
 type Wallet struct {
@@ -150,6 +167,14 @@ func (w *Wallet) GetAndIncrementSeq() uint64 {
 	seq := w.Seq
 	w.Seq++
 	return seq
+}
+
+func (w *Wallet) SetSeqIfHigher(seq uint64) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if seq > w.Seq {
+		w.Seq = seq
+	}
 }
 
 func newClientFactory(wallets []*Wallet, chainID string) *InjectiveClientFactory {
@@ -237,6 +262,69 @@ func loadWallets(walletFile, restEndpoint string) ([]*Wallet, error) {
 
 	fmt.Printf("[INFO] Loaded %d wallets\n", len(wallets))
 	return wallets, nil
+}
+
+func startSeqRefresher(ctx context.Context, wallets []*Wallet, restEndpoint string) {
+	raw := strings.TrimSpace(os.Getenv("INJ_SEQ_REFRESH_SECONDS"))
+	if raw == "" {
+		return
+	}
+	seconds, err := strconv.Atoi(raw)
+	if err != nil || seconds <= 0 {
+		fmt.Printf("Warning: invalid INJ_SEQ_REFRESH_SECONDS=%q (must be > 0)\n", raw)
+		return
+	}
+
+	restEndpoint = strings.TrimRight(restEndpoint, "/")
+	ticker := time.NewTicker(time.Duration(seconds) * time.Second)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				for _, w := range wallets {
+					seq, err := fetchAccountSequence(restEndpoint, w.Address)
+					if err != nil {
+						continue
+					}
+					w.SetSeqIfHigher(seq)
+				}
+			}
+		}
+	}()
+}
+
+func fetchAccountSequence(restEndpoint, address string) (uint64, error) {
+	resp, err := http.Get(fmt.Sprintf("%s/cosmos/auth/v1beta1/accounts/%s", restEndpoint, address))
+	if err != nil {
+		return 0, err
+	}
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return 0, err
+	}
+	if resp.StatusCode >= 400 {
+		return 0, fmt.Errorf("account query %s status %d", address, resp.StatusCode)
+	}
+
+	var accResp struct {
+		Account struct {
+			BaseAccount struct {
+				Sequence string `json:"sequence"`
+			} `json:"base_account"`
+		} `json:"account"`
+	}
+	if err := json.Unmarshal(body, &accResp); err != nil {
+		return 0, err
+	}
+	seq, err := strconv.ParseUint(accResp.Account.BaseAccount.Sequence, 10, 64)
+	if err != nil {
+		return 0, err
+	}
+	return seq, nil
 }
 
 func runDebugSyncBroadcast(factory *InjectiveClientFactory, restEndpoint string) error {

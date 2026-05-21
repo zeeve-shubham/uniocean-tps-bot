@@ -83,8 +83,30 @@ func denomFromEnv() string {
 	return defaultDenom
 }
 
+func subaccountIDForWallet(walletAddr string, rng *rand.Rand) (string, error) {
+	if subaccountID := strings.TrimSpace(os.Getenv("INJ_SUBACCOUNT_ID")); subaccountID != "" {
+		return subaccountID, nil
+	}
+
+	nonces := uint64(1)
+	if raw := strings.TrimSpace(os.Getenv("INJ_SUBACCOUNT_NONCES")); raw != "" {
+		if n, err := strconv.ParseUint(raw, 10, 64); err == nil && n > 0 {
+			nonces = n
+		}
+	}
+
+	nonce := uint64(0)
+	if nonces > 1 {
+		nonce = uint64(rng.Int63n(int64(nonces)))
+	}
+	return BuildSubaccountID(walletAddr, nonce)
+}
+
 func (c *InjectiveClient) GenerateTx() ([]byte, error) {
-	wallet := c.factory.Wallets[c.rng.Intn(len(c.factory.Wallets))]
+	wallet := c.factory.NextWallet()
+	if wallet == nil {
+		return nil, fmt.Errorf("no wallets loaded")
+	}
 
 	activeTxTypes, err := activeTxTypesFromEnv()
 	if err != nil {
@@ -114,12 +136,9 @@ func (c *InjectiveClient) GenerateTx() ([]byte, error) {
 
 	case 0:
 		// exchange.MsgDeposit
-		subaccountID := strings.TrimSpace(os.Getenv("INJ_SUBACCOUNT_ID"))
-		if subaccountID == "" {
-			subaccountID, err = BuildSubaccountID(wallet.Address, 0)
-			if err != nil {
-				return nil, err
-			}
+		subaccountID, err := subaccountIDForWallet(wallet.Address, c.rng)
+		if err != nil {
+			return nil, err
 		}
 		msg = &exchangetypes.MsgDeposit{
 			Sender:       wallet.Address,
@@ -133,12 +152,9 @@ func (c *InjectiveClient) GenerateTx() ([]byte, error) {
 		if marketID == "" {
 			return nil, fmt.Errorf("INJ_SPOT_MARKET_ID is required for spot orders")
 		}
-		subaccountID := strings.TrimSpace(os.Getenv("INJ_SUBACCOUNT_ID"))
-		if subaccountID == "" {
-			subaccountID, err = BuildSubaccountID(wallet.Address, 0)
-			if err != nil {
-				return nil, err
-			}
+		subaccountID, err := subaccountIDForWallet(wallet.Address, c.rng)
+		if err != nil {
+			return nil, err
 		}
 		price := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_SPOT_PRICE", "1"))
 		quantity := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_SPOT_QTY", "1"))
@@ -165,18 +181,52 @@ func (c *InjectiveClient) GenerateTx() ([]byte, error) {
 			},
 		}
 
+	case 2:
+		// exchange.MsgCreateSpotMarketOrder
+		marketID := strings.TrimSpace(os.Getenv("INJ_SPOT_MARKET_ID"))
+		if marketID == "" {
+			return nil, fmt.Errorf("INJ_SPOT_MARKET_ID is required for spot orders")
+		}
+		subaccountID, err := subaccountIDForWallet(wallet.Address, c.rng)
+		if err != nil {
+			return nil, err
+		}
+		// Market orders still require price/quantity fields in the OrderInfo.
+		// Keep values simple and configurable.
+		price := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_SPOT_PRICE", "1"))
+		quantity := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_SPOT_QTY", "1"))
+		feeRecipient := strings.TrimSpace(os.Getenv("INJ_FEE_RECIPIENT"))
+		if feeRecipient == "" {
+			feeRecipient = wallet.Address
+		}
+		isBuy := c.rng.Intn(2) == 0
+		orderType := exchangetypes.OrderType_SELL
+		if isBuy {
+			orderType = exchangetypes.OrderType_BUY
+		}
+		msg = &exchangetypes.MsgCreateSpotMarketOrder{
+			Sender: wallet.Address,
+			Order: exchangetypes.SpotOrder{
+				MarketId: marketID,
+				OrderInfo: exchangetypes.OrderInfo{
+					SubaccountId: subaccountID,
+					FeeRecipient: feeRecipient,
+					Price:        price,
+					Quantity:     quantity,
+				},
+				OrderType: orderType,
+			},
+		}
+
 	case 3:
 		// exchange.MsgCreateBinaryOptionsLimitOrder (uses DerivativeOrder)
 		marketID := strings.TrimSpace(os.Getenv("INJ_BINARY_MARKET_ID"))
 		if marketID == "" {
 			return nil, fmt.Errorf("INJ_BINARY_MARKET_ID is required for binary options orders")
 		}
-		subaccountID := strings.TrimSpace(os.Getenv("INJ_SUBACCOUNT_ID"))
-		if subaccountID == "" {
-			subaccountID, err = BuildSubaccountID(wallet.Address, 0)
-			if err != nil {
-				return nil, err
-			}
+		subaccountID, err := subaccountIDForWallet(wallet.Address, c.rng)
+		if err != nil {
+			return nil, err
 		}
 		price := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_BINARY_PRICE", "0.5"))
 		quantity := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_BINARY_QTY", "1"))
@@ -205,8 +255,45 @@ func (c *InjectiveClient) GenerateTx() ([]byte, error) {
 			},
 		}
 
+	case 5:
+		// exchange.MsgCreateBinaryOptionsMarketOrder (uses DerivativeOrder)
+		marketID := strings.TrimSpace(os.Getenv("INJ_BINARY_MARKET_ID"))
+		if marketID == "" {
+			return nil, fmt.Errorf("INJ_BINARY_MARKET_ID is required for binary options orders")
+		}
+		subaccountID, err := subaccountIDForWallet(wallet.Address, c.rng)
+		if err != nil {
+			return nil, err
+		}
+		price := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_BINARY_PRICE", "0.5"))
+		quantity := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_BINARY_QTY", "1"))
+		margin := sdkmath.LegacyMustNewDecFromStr(envOrDefault("INJ_BINARY_MARGIN", "1"))
+		feeRecipient := strings.TrimSpace(os.Getenv("INJ_FEE_RECIPIENT"))
+		if feeRecipient == "" {
+			feeRecipient = wallet.Address
+		}
+		isBuy := c.rng.Intn(2) == 0
+		orderType := exchangetypes.OrderType_SELL
+		if isBuy {
+			orderType = exchangetypes.OrderType_BUY
+		}
+		msg = &exchangetypes.MsgCreateBinaryOptionsMarketOrder{
+			Sender: wallet.Address,
+			Order: exchangetypes.DerivativeOrder{
+				MarketId: marketID,
+				OrderInfo: exchangetypes.OrderInfo{
+					SubaccountId: subaccountID,
+					FeeRecipient: feeRecipient,
+					Price:        price,
+					Quantity:     quantity,
+				},
+				OrderType: orderType,
+				Margin:    margin,
+			},
+		}
+
 	default:
-		return nil, fmt.Errorf("unsupported tx type %d (valid: 0 deposit, 1 spot limit, 3 binary options limit, 4 bank send)", txType)
+		return nil, fmt.Errorf("unsupported tx type %d (valid: 0 deposit, 1 spot limit, 2 spot market, 3 binary limit, 5 binary market, 4 bank send)", txType)
 	}
 
 	txBuilder := c.factory.TxConfig.NewTxBuilder()

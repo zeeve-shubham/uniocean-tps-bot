@@ -114,6 +114,12 @@ export UNIOCEAN_WS_ENDPOINT=ws://<host>:26657/websocket
 - `async` is for pressure / load
 - `🚀 On-chain TPS` from `tps-checker` is the real committed TPS
 
+Environment knobs:
+
+- `TM_LOAD_TEST_PACE=0` disables pacing (default is paced batches to reduce WS burst/backpressure)
+- `TM_LOAD_TEST_WS_WRITE_TIMEOUT=30s` increases WS write deadline (helps avoid `i/o timeout`)
+- `INJ_SEQ_REFRESH_SECONDS=2` periodically re-syncs Injective account sequences from LCD (helps recover after drops/rejections)
+
 If you see `CheckTx rejected transaction` or `Broadcast health`, the node is receiving txs but rejecting some of them before block inclusion.
 
 ## Common problems
@@ -164,14 +170,17 @@ GOMODCACHE=/tmp/gomodcache-inj GOCACHE=/tmp/go-build-cache go build -o ../inject
 
 - `0` = `exchange.MsgDeposit`
 - `1` = `exchange.MsgCreateSpotLimitOrder`
+- `2` = `exchange.MsgCreateSpotMarketOrder`
 - `3` = `exchange.MsgCreateBinaryOptionsLimitOrder`
+- `5` = `exchange.MsgCreateBinaryOptionsMarketOrder`
 - `4` = `bank.MsgSend`
 
 ### Required env for exchange txs
 
 - `INJ_SPOT_MARKET_ID` (required for tx type `1`)
 - `INJ_BINARY_MARKET_ID` (required for tx type `3`)
-- Optional: `INJ_SUBACCOUNT_ID` (defaults to subaccount nonce `0` if empty)
+- Optional: `INJ_SUBACCOUNT_ID` (use a fixed 0x... subaccount id)
+- Optional: `INJ_SUBACCOUNT_NONCES` (defaults `1`; if >1 picks a random nonce per tx and derives subaccounts)
 
 ### Run examples
 
