@@ -6,8 +6,10 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -21,8 +23,11 @@ import (
 const (
 	defaultObserveSeconds = 60
 	newBlockQuery         = "tm.event='NewBlock'"
-	idleLogInterval       = 5 * time.Second
-	rpcCallTimeout        = 5 * time.Second
+	catchUpInterval       = 1 * time.Second  // aggressive polling for missed blocks
+	idleLogInterval       = 5 * time.Second  // user-facing "waiting..." messages
+	rpcCallTimeout        = 3 * time.Second  // per-RPC call timeout (reduced from 5s)
+	fetchWorkers          = 8                // concurrent block-fetching goroutines
+	finalCatchUpTimeout   = 30 * time.Second // timeout for the exhaustive final sweep
 )
 
 type observedBlock struct {
@@ -78,6 +83,10 @@ func main() {
 	deadline := time.NewTimer(time.Duration(observeSecs) * time.Second)
 	defer deadline.Stop()
 
+	// Separate tickers: fast catch-up (1s) vs slow idle log (5s)
+	catchUpTicker := time.NewTicker(catchUpInterval)
+	defer catchUpTicker.Stop()
+
 	idleTicker := time.NewTicker(idleLogInterval)
 	defer idleTicker.Stop()
 
@@ -86,16 +95,20 @@ func main() {
 	var totalTxs int64
 	var totalBlocks int64
 
+	finish := func() {
+		fmt.Printf("\n⏳ Fetching all remaining blocks...\n")
+		exhaustiveCatchUp(client, startBlock, &lastObserved, &totalBlocks, &totalTxs)
+		printSummary(observeSecs, startBlock, lastObserved, totalBlocks, totalTxs)
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
-			catchUpMissingBlocks(ctx, client, startBlock, &lastObserved, &totalBlocks, &totalTxs)
-			printSummary(ctx, client, observeSecs, startBlock, lastObserved, totalBlocks, totalTxs)
+			finish()
 			return
 
 		case <-deadline.C:
-			catchUpMissingBlocks(ctx, client, startBlock, &lastObserved, &totalBlocks, &totalTxs)
-			printSummary(ctx, client, observeSecs, startBlock, lastObserved, totalBlocks, totalTxs)
+			finish()
 			return
 
 		case event := <-events:
@@ -103,15 +116,15 @@ func main() {
 			if !ok || block.height <= lastObserved.height {
 				continue
 			}
-
 			lastWallEventAt = time.Now()
 			recordObservedBlock(startBlock, block, &lastObserved, &totalBlocks, &totalTxs, "")
 
-		case <-idleTicker.C:
-			if catchUpMissingBlocks(ctx, client, startBlock, &lastObserved, &totalBlocks, &totalTxs) {
+		case <-catchUpTicker.C:
+			if catchUpMissingBlocks(client, startBlock, &lastObserved, &totalBlocks, &totalTxs) {
 				lastWallEventAt = time.Now()
-				continue
 			}
+
+		case <-idleTicker.C:
 			if time.Since(lastWallEventAt) >= idleLogInterval {
 				fmt.Printf("⏳ Waiting for next block... latest observed #%d\n", lastObserved.height)
 			}
@@ -207,34 +220,142 @@ func blockAtHeight(ctx context.Context, client *rpchttp.HTTP, height int64) (obs
 	}, nil
 }
 
+// fetchBlocksConcurrent fetches blocks in [fromHeight, toHeight] using a pool
+// of concurrent workers and returns them sorted by height.
+func fetchBlocksConcurrent(client *rpchttp.HTTP, fromHeight, toHeight int64) []observedBlock {
+	if fromHeight > toHeight {
+		return nil
+	}
+
+	count := toHeight - fromHeight + 1
+	heights := make(chan int64, count)
+	results := make(chan observedBlock, count)
+
+	workerCount := fetchWorkers
+	if int64(workerCount) > count {
+		workerCount = int(count)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for h := range heights {
+				ctx, cancel := context.WithTimeout(context.Background(), rpcCallTimeout)
+				result, err := client.Block(ctx, &h)
+				cancel()
+				if err == nil && result.Block != nil {
+					results <- observedBlock{
+						height:  result.Block.Height,
+						time:    result.Block.Time,
+						txCount: len(result.Block.Data.Txs),
+					}
+				}
+			}
+		}()
+	}
+
+	// Feed all heights into the buffered channel (won't block).
+	for h := fromHeight; h <= toHeight; h++ {
+		heights <- h
+	}
+	close(heights)
+
+	// Close results once all workers are done.
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect and sort.
+	var blocks []observedBlock
+	for b := range results {
+		blocks = append(blocks, b)
+	}
+
+	sort.Slice(blocks, func(i, j int) bool {
+		return blocks[i].height < blocks[j].height
+	})
+
+	return blocks
+}
+
+// catchUpMissingBlocks fetches any blocks between lastObserved and the
+// current chain tip using concurrent RPC calls. Called every catchUpInterval (1s).
 func catchUpMissingBlocks(
-	ctx context.Context,
 	client *rpchttp.HTTP,
 	startBlock observedBlock,
 	lastObserved *observedBlock,
 	totalBlocks, totalTxs *int64,
 ) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), rpcCallTimeout)
+	defer cancel()
+
 	latestBlock, err := currentBlock(ctx, client)
-	if err != nil {
+	if err != nil || latestBlock.height <= lastObserved.height {
 		return false
 	}
 
-	latestHeight := latestBlock.height
-	if latestHeight <= lastObserved.height {
+	blocks := fetchBlocksConcurrent(client, lastObserved.height+1, latestBlock.height)
+	if len(blocks) == 0 {
 		return false
 	}
 
-	caughtUp := false
-	for height := lastObserved.height + 1; height <= latestHeight; height++ {
-		block, err := blockAtHeight(ctx, client, height)
-		if err != nil {
-			break
+	for _, block := range blocks {
+		if block.height <= lastObserved.height {
+			continue
 		}
 		recordObservedBlock(startBlock, block, lastObserved, totalBlocks, totalTxs, " [rpc catch-up]")
-		caughtUp = true
 	}
 
-	return caughtUp
+	return true
+}
+
+// exhaustiveCatchUp performs a final comprehensive sweep to fetch ALL blocks
+// between lastObserved and the chain tip. Uses concurrent workers with a
+// generous timeout since this is the last chance to get accurate data.
+func exhaustiveCatchUp(
+	client *rpchttp.HTTP,
+	startBlock observedBlock,
+	lastObserved *observedBlock,
+	totalBlocks, totalTxs *int64,
+) {
+	ctx, cancel := context.WithTimeout(context.Background(), finalCatchUpTimeout)
+	defer cancel()
+
+	latestBlock, err := currentBlock(ctx, client)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Could not fetch latest block for final catch-up: %v\n", err)
+		return
+	}
+
+	if latestBlock.height <= lastObserved.height {
+		return
+	}
+
+	fromHeight := lastObserved.height + 1
+	toHeight := latestBlock.height
+	gap := toHeight - fromHeight + 1
+
+	fmt.Printf("🔄 Catching up %d blocks (#%d → #%d) with %d workers...\n",
+		gap, fromHeight, toHeight, fetchWorkers)
+
+	blocks := fetchBlocksConcurrent(client, fromHeight, toHeight)
+	fetched := 0
+	for _, block := range blocks {
+		if block.height <= lastObserved.height {
+			continue
+		}
+		recordObservedBlock(startBlock, block, lastObserved, totalBlocks, totalTxs, " [final catch-up]")
+		fetched++
+	}
+
+	if fetched < int(gap) {
+		fmt.Printf("⚠️  Fetched %d/%d blocks (some RPC calls may have timed out)\n", fetched, gap)
+	} else {
+		fmt.Printf("✅ Caught up all %d blocks\n", fetched)
+	}
 }
 
 func recordObservedBlock(
@@ -297,17 +418,12 @@ func blockFromEvent(event coretypes.ResultEvent) (observedBlock, bool) {
 }
 
 func printSummary(
-	ctx context.Context,
-	client *rpchttp.HTTP,
 	observeSecs int,
 	startBlock observedBlock,
 	lastObserved observedBlock,
 	totalBlocks, totalTxs int64,
 ) {
 	endBlock := lastObserved
-	if latest, err := currentBlock(ctx, client); err == nil && latest.height >= endBlock.height {
-		endBlock = latest
-	}
 
 	actualDuration := endBlock.time.Sub(startBlock.time).Seconds()
 	if actualDuration <= 0 {
